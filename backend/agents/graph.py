@@ -1,4 +1,5 @@
 import logging
+import time
 
 from agents.state import AgentState
 from agents.router import route
@@ -60,8 +61,13 @@ def run_leave_agent(state: AgentState) -> AgentState:
 
 
 def run_agent(state: AgentState) -> AgentState:
+    t_total = time.perf_counter()
     state = _normalize_state(state)
+
+    t0 = time.perf_counter()
     intent = route(state)
+    logger.info("[PERF] router %.3fs intent=%s", time.perf_counter() - t0, intent)
+
     state["intent"] = intent
     logger.info("Agent start intent=%s employee_id=%s requester_id=%s", intent, state.get("employee_id"), state.get("requester_id"))
 
@@ -73,7 +79,8 @@ def run_agent(state: AgentState) -> AgentState:
             break
 
     logger.info(
-        "Agent done intent=%s spof=%s conflict=%s burnout=%s",
+        "[PERF] agent_total %.3fs intent=%s spof=%s conflict=%s burnout=%s",
+        time.perf_counter() - t_total,
         intent,
         state.get("spof_flag"),
         state.get("conflict_detected"),
@@ -99,6 +106,7 @@ def _get_flow(intent: str) -> list[str]:
 
 
 def _run_node(module_path: str, state: AgentState) -> AgentState:
+    node_name = module_path.rsplit(".", 1)[-1]
     try:
         module = __import__(module_path, fromlist=["run"])
         fn = getattr(module, "run")
@@ -107,9 +115,13 @@ def _run_node(module_path: str, state: AgentState) -> AgentState:
         state["error"] = str(exc)
         return state
 
+    t0 = time.perf_counter()
     try:
-        return fn(state)
+        result = fn(state)
+        logger.info("[PERF] node %-20s %.3fs", node_name, time.perf_counter() - t0)
+        return result
     except Exception as exc:
+        logger.info("[PERF] node %-20s %.3fs (FAILED)", node_name, time.perf_counter() - t0)
         logger.exception("Agent node failed node=%s", module_path)
         state["error"] = str(exc)
         return state

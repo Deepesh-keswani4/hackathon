@@ -1,13 +1,13 @@
 {
   "version": "0.2.0",
   "configurations": [
-    
+
     {
       "name": "Django: runserver (env.all.local)",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/backend/manage.py",
-      "args": ["runserver", "0.0.0.0:8000"],
+      "args": ["runserver", "0.0.0.0:8002"],
       "python": "/Users/kartik.keswani/.venvs/hackathon-backend/bin/python",
       "cwd": "${workspaceFolder}/backend",
       "django": true,
@@ -34,7 +34,7 @@
         "DEFAULT_FROM_EMAIL": "",
         "LLM_PROVIDER": "ollama",
         "OLLAMA_BASE_URL": "http://localhost:11434",
-        "OLLAMA_MODEL": "kimi-k2.5:cloud",
+        "OLLAMA_MODEL": "gpt-oss:120b-cloud",
         "EMBEDDING_PROVIDER": "ollama",
         "OLLAMA_EMBED_MODEL": "nomic-embed-text",
         "VITE_API_URL": "http://localhost:8000"

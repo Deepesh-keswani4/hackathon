@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 from agents.state import AgentState
 
@@ -20,7 +21,10 @@ def run(state: AgentState) -> AgentState:
     try:
         provider = LLMProviderFactory.get_provider()
         messages = _build_messages(state, LLMMessage)
+        t0 = time.perf_counter()
         response = provider.complete(messages, temperature=0.3)
+        logger.info("[PERF] llm_generate %.3fs provider=%s model=%s tokens=%s",
+                    time.perf_counter() - t0, response.provider, response.model, response.tokens_used)
     except Exception as exc:
         logger.exception("LLM generation failed")
         state["llm_response"] = _fallback_response(state, error=str(exc))
@@ -30,7 +34,6 @@ def run(state: AgentState) -> AgentState:
 
     state["llm_response"] = response.content
     state["manager_context"] = response.content
-    logger.info("LLM generation complete provider=%s model=%s", response.provider, response.model)
     return state
 
 
@@ -105,17 +108,19 @@ def _get_system_prompt(state: AgentState) -> str:
         )
     else:
         prompt = (
-            "You are answering employee and HR questions using provided context.\n"
-            "If the user asks about another employee (for example: phone number, email, manager) and the tool_results "
-            "do not include that contact info, do not guess. Instead:\n"
-            "- Use tool_results.find_employee_by_name.results to show matching employees (name, employee_id, department, username).\n"
-            "- If multiple matches exist, ask the user to pick one by employee_id.\n"
-            "- If no matches exist, say so and suggest providing a more specific name.\n"
-            "If contact fields are present but null, explain that access may be restricted by role.\n"
-            "If the user asks about reporting lines (for example: manager's manager), use "
-            "tool_results.get_employee_manager_chain.manager_chain to answer. The first item is the immediate manager; "
-            "the second item (if present) is the manager's manager.\n"
-            "If the user asks who reports to a manager, use tool_results.get_direct_reports.direct_reports to list direct reports."
+            "You are an HRMS assistant answering employee and HR questions using ONLY the provided tool_results and retrieved_docs.\n"
+            "CRITICAL: Only state facts that are present in tool_results. Never guess, infer, or suggest data you do not have.\n"
+            "If the user's message is a greeting or vague (e.g. 'whatsup', 'hi', 'hello'), respond with a friendly greeting "
+            "and briefly list what you can help with (leave balance, team info, attendance, HR policies, org chart). Do not fabricate HR data.\n"
+            "If the user asks about another employee and the tool_results do not include that data, do not guess. Instead:\n"
+            "- Use tool_results.find_employee_by_name.results to show matching employees (name, employee_id, department).\n"
+            "- If multiple matches, ask the user to pick one by employee_id.\n"
+            "- If no matches, say so and suggest providing a more specific name or employee ID.\n"
+            "If contact fields are present but null, say contact details are not available for your role.\n"
+            "If tool_results contain get_employee_manager_chain, use manager_chain to answer manager/reporting questions.\n"
+            "If tool_results contain get_direct_reports, use direct_reports to list team members.\n"
+            "If a relevant tool was NOT called and you do not have the data, say 'I don't have that information yet — "
+            "please ask me specifically (e.g. \"who are Kartik's direct reports?\")' rather than offering to look it up."
         )
 
     summary = chat_summary.strip()

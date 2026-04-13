@@ -1,4 +1,5 @@
 import logging
+import time
 
 from agents.state import AgentState
 
@@ -112,7 +113,86 @@ def _self_referential_plan(query: str, state: AgentState, already_called: list[s
     return None
 
 
-def _plan_next_tool_call(state: AgentState, apply_input: dict, tool_results: dict, list_tools_fn, already_called: list[str]) -> dict | None:
+def _direct_reports_plan(
+    query: str, tool_results: dict, already_called: list[str]
+) -> dict | None:
+    q = (query or "").strip()
+    ql = q.lower()
+
+    triggers = (
+        "who reports to ",
+        "who is reporting to ",
+        "direct reports of ",
+        "reportees of ",
+        "team of ",
+        "people reporting to ",
+        "people who report to ",
+    )
+    if not any(t in ql for t in triggers):
+        return None
+
+    if any(
+        t in ql
+        for t in (
+            "who reports to me",
+            "who is reporting to me",
+            "my direct reports",
+            "my team",
+        )
+    ):
+        return None
+
+    if (
+        "find_employee_by_name" in already_called
+        and "get_direct_reports" not in already_called
+    ):
+        match = tool_results.get("find_employee_by_name") or {}
+        results = match.get("results") or []
+        if len(results) == 1 and results[0].get("id"):
+            return {
+                "tool_name": "get_direct_reports",
+                "employee_id": results[0]["id"],
+                "input_data": {},
+            }
+        return None
+
+    if "find_employee_by_name" in already_called:
+        return None
+
+    name = ""
+    if "who is reporting to " in ql:
+        name = ql.split("who is reporting to ", 1)[1]
+    elif "who reports to " in ql:
+        name = ql.split("who reports to ", 1)[1]
+    elif "people reporting to " in ql:
+        name = ql.split("people reporting to ", 1)[1]
+    elif "people who report to " in ql:
+        name = ql.split("people who report to ", 1)[1]
+    elif "direct reports of " in ql:
+        name = ql.split("direct reports of ", 1)[1]
+    elif "reportees of " in ql:
+        name = ql.split("reportees of ", 1)[1]
+    elif "team of " in ql:
+        name = ql.split("team of ", 1)[1]
+
+    name = (name or "").strip().strip("?.!,;:")
+    if not name:
+        return None
+
+    return {
+        "tool_name": "find_employee_by_name",
+        "employee_id": None,
+        "input_data": {"query": name},
+    }
+
+
+def _plan_next_tool_call(
+    state: AgentState,
+    apply_input: dict,
+    tool_results: dict,
+    list_tools_fn,
+    already_called: list[str],
+) -> dict | None:
     try:
         from core.llm.base import LLMMessage
         from core.llm.factory import LLMProviderFactory
@@ -123,14 +203,25 @@ def _plan_next_tool_call(state: AgentState, apply_input: dict, tool_results: dic
     if not query:
         return None
 
-    # ── Fast path: deterministic self-referential resolution ────────────────
     self_plan = _self_referential_plan(query, state, already_called)
     if self_plan:
         logger.info(
             "MCP planner self-referential tool=%s requester=%s query=%s",
-            self_plan.get("tool_name"), state.get("requester_id"), query,
+            self_plan.get("tool_name"),
+            state.get("requester_id"),
+            query,
         )
         return self_plan
+
+    direct_reports_plan = _direct_reports_plan(query, tool_results, already_called)
+    if direct_reports_plan:
+        logger.info(
+            "MCP planner direct-reports tool=%s requester=%s query=%s",
+            direct_reports_plan.get("tool_name"),
+            state.get("requester_id"),
+            query,
+        )
+        return direct_reports_plan
 
     available = list_tools_fn() or []
     allow_personal = _allow_personal_details()
@@ -139,15 +230,15 @@ def _plan_next_tool_call(state: AgentState, apply_input: dict, tool_results: dic
         "You are a tool planner for an HRMS assistant.\n"
         "Pick the next single tool call needed to answer the user's query.\n"
         "Return ONLY valid JSON — one of these two shapes:\n"
-        "  {\"stop\": true}\n"
-        "  {\"tool_call\": {\"tool\": \"<name>\", \"employee_id\": <int|null>, \"input_data\": {...}}}\n\n"
+        '  {"stop": true}\n'
+        '  {"tool_call": {"tool": "<name>", "employee_id": <int|null>, "input_data": {...}}}\n\n'
         "=== EMPLOYEE TOOL CATALOG ===\n"
-        "get_my_profile            — requester's own profile (role, dept, title, manager). Use for 'who am I', 'my profile', 'my role'.\n"
+        "get_my_profile            — requester's own profile (role, dept, title, manager).\n"
         "get_employee_profile      — full profile of one employee by DB id. Requires employee_id.\n"
         "get_employee_by_emp_id    — look up by string id (EMP001). Use input_data.emp_id.\n"
         "find_employee_by_name     — fuzzy name/email search. Use input_data.query = person name. Returns list of matches.\n"
         "get_employee_manager_chain — manager hierarchy (up to 5 hops). Use for 'who is X's manager', reporting chain.\n"
-        "get_direct_reports        — immediate reports of a manager. Use for 'who reports to X', 'X's team'.\n"
+        "get_direct_reports        — immediate reports of a manager. Use for 'who reports to X', 'who is reporting to X', 'X's team'.\n"
         "get_peers                 — colleagues with same manager. Use for 'my peers', 'John's teammates'.\n"
         "get_org_tree              — recursive org tree under a manager (depth 3). Use for 'org chart under X', 'full team structure'.\n"
         "get_department_employees  — all employees in a dept. Use input_data.department_code or department_name.\n"
@@ -179,7 +270,7 @@ def _plan_next_tool_call(state: AgentState, apply_input: dict, tool_results: dic
         "5. After find_employee_by_name returns exactly 1 result: use that result's 'id' as employee_id for the next tool.\n"
         "6. If find_employee_by_name returns 0 or >1 results: stop (LLM will ask user to clarify).\n"
         "7. 'reporting chain' / 'who is X's manager': get_employee_manager_chain.\n"
-        "8. 'who reports to X' / 'X's team' / 'X's direct reports': get_direct_reports.\n"
+        "8. 'who reports to X' / 'who is reporting to X' / 'reporting to X' / 'X's team' / 'X's direct reports': get_direct_reports.\n"
         "9. 'X's peers' / 'X's teammates': get_peers.\n"
         "10. Query mentions EMP\\d+ string id: get_employee_by_emp_id with input_data.emp_id.\n"
         "\n"
@@ -218,7 +309,9 @@ def _plan_next_tool_call(state: AgentState, apply_input: dict, tool_results: dic
 
     try:
         provider = LLMProviderFactory.get_provider()
+        t0 = time.perf_counter()
         resp = provider.complete([LLMMessage(role="system", content=system), LLMMessage(role="user", content=human)], temperature=0.0)
+        logger.info("[PERF] mcp_planner_llm %.3fs", time.perf_counter() - t0)
     except Exception:
         return None
 
@@ -309,11 +402,15 @@ def run(state: AgentState) -> AgentState:
             input_data = spec.get("input_data") if isinstance(spec.get("input_data"), dict) else apply_input
             employee_id = spec.get("employee_id") or state.get("employee_id")
             try:
+                _t = time.perf_counter()
                 tool_results[tool_name] = fn(
                     employee_id=employee_id,
                     requester_id=state.get("requester_id"),
                     requester_role=state.get("requester_role"),
                     input_data=input_data,
+                )
+                logger.info(
+                    "[PERF] mcp_tool %-30s %.3fs", tool_name, time.perf_counter() - _t
                 )
             except Exception as exc:
                 logger.exception("MCP tool failed tool=%s", tool_name)
@@ -339,11 +436,15 @@ def run(state: AgentState) -> AgentState:
         if not employee_id:
             employee_id = state.get("employee_id")
         try:
+            _t = time.perf_counter()
             tool_results[tool_name] = fn(
                 employee_id=employee_id,
                 requester_id=state.get("requester_id"),
                 requester_role=state.get("requester_role"),
                 input_data=input_data,
+            )
+            logger.info(
+                "[PERF] mcp_tool %-30s %.3fs", tool_name, time.perf_counter() - _t
             )
         except Exception as exc:
             logger.exception("MCP tool failed tool=%s", tool_name)

@@ -27,7 +27,7 @@ export DEFAULT_FROM_EMAIL=
 export LLM_PROVIDER=ollama
 
 export OLLAMA_BASE_URL=http://localhost:11434
-export OLLAMA_MODEL=kimi-k2.5:cloud
+export OLLAMA_MODEL=gpt-oss:120b-cloud
 
 export EMBEDDING_PROVIDER=ollama
 export OLLAMA_EMBED_MODEL=nomic-embed-text

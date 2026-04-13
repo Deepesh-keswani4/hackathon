@@ -38,6 +38,33 @@ def route(state: AgentState) -> str:
         INTENTS = {}
         LLMProviderFactory = None
 
+    # ── Fast keyword routing — runs before embeddings to avoid slow embed calls ──
+    _multi_leave_kws = ("sl", "cl", "el", "pl", "multiple leave", "sick and casual", "2 sl", "3 cl", "1 pl")
+    if any(k in q for k in _multi_leave_kws) and any(k in q for k in ("apply", "request", "want", "need", "take")):
+        return "leave_collection"
+    if any(k in q for k in ("apply leave", "apply for leave", "leave from", "leave to", "leave days", "request leave")):
+        return "leave_application"
+    if any(k in q for k in ("burnout", "overworked", "stress", "overtime", "fatigue", "exhausted")):
+        return "burnout_check"
+    if any(k in q for k in ("review", "performance review", "appraisal", "360", "feedback", "rating", "goal")):
+        return "review_summary"
+    if any(k in q for k in ("policy", "leave policy", "security policy", "handbook", "rules", "guidelines", "entitlement")):
+        return "policy_query"
+    _emp_kws = (
+        "who is my manager", "manager's manager", "skip level", "my direct reports",
+        "who reports to", "reportee", "reporting", "org chart", "org tree",
+        "reporting chain", "who manages", "my peers", "my teammates", "my colleagues",
+        "new hires", "recent joiners", "who joined", "largest team", "most reports",
+        "list all managers", "list managers", "employees in ", "who is in ",
+        "employee id", "emp0", "emp-", "my profile", "my role", "my department",
+        "my title", "who am i", "phone number of", "email of", "phone of",
+        "contact of", "find employee", "search employee", "who is ", "tell me about ",
+        "leave balance", "my balance", "my leaves", "attendance",
+    )
+    if any(k in q for k in _emp_kws):
+        return "employee_query"
+
+    # ── Embedding match — only reached for ambiguous queries ──────────────────
     top_intent, score = _embed_match(q, INTENTS)
     if top_intent and score >= 0.42:
         logger.info("Router embeddings top=%s score=%.3f", top_intent, score)
@@ -47,29 +74,6 @@ def route(state: AgentState) -> str:
     if llm_intent and llm_conf >= 0.5:
         logger.info("Router llm top=%s conf=%.3f", llm_intent, llm_conf)
         return llm_intent
-
-    # Keyword fallbacks
-    _multi_leave_kws = ("sl", "cl", "el", "pl", "multiple leave", "sick and casual", "2 sl", "3 cl", "1 pl")
-    if any(k in q for k in _multi_leave_kws) and any(k in q for k in ("apply", "request", "want", "need", "take")):
-        return "leave_collection"
-    if any(k in q for k in ("apply leave", "apply for leave", "leave from", "leave to", "leave days", "request leave")):
-        return "leave_application"
-    if any(k in q for k in ("policy", "leave policy", "security policy", "handbook", "rules", "guidelines")):
-        return "policy_query"
-
-    # Employee directory / org structure keyword fallbacks
-    _emp_kws = (
-        "who is my manager", "who is in my team", "my direct reports", "who reports to",
-        "org chart", "org tree", "reporting chain", "who manages", "my peers",
-        "my teammates", "my colleagues", "new hires", "recent joiners", "who joined",
-        "largest team", "most reports", "list all managers", "list managers",
-        "employees in ", "who is in ", "employee id", "emp0", "emp-",
-        "my profile", "my role", "my department", "my title", "who am i",
-        "phone number of", "email of", "phone of", "contact of",
-        "find employee", "search employee",
-    )
-    if any(k in q for k in _emp_kws):
-        return "employee_query"
 
     return "nl_query"
 

@@ -12,7 +12,12 @@ logger = logging.getLogger("hrms")
 class OllamaProvider(BaseLLMProvider):
     def __init__(self, model: str | None = None, api_key: str | None = None, base_url: str | None = None):
         self._base_url = (base_url or os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434").rstrip("/")
-        self._model = model or os.environ.get("OLLAMA_MODEL") or os.environ.get("LLM_MODEL") or "kimi-k2.5:cloud"
+        self._model = (
+            model
+            or os.environ.get("OLLAMA_MODEL")
+            or os.environ.get("LLM_MODEL")
+            or "gpt-oss:120b-cloud"
+        )
         self._api_key = api_key or os.environ.get("OLLAMA_API_KEY") or ""
 
     @property

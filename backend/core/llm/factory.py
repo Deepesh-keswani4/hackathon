@@ -40,7 +40,11 @@ class LLMProviderFactory:
             raise ValueError(f"Unknown LLM provider '{name}'. Available: {list(_REGISTRY.keys())}")
 
         if name == "ollama":
-            model = os.environ.get("OLLAMA_MODEL") or os.environ.get("LLM_MODEL") or "kimi-k2.5:cloud"
+            model = (
+                os.environ.get("OLLAMA_MODEL")
+                or os.environ.get("LLM_MODEL")
+                or "gpt-oss:120b-cloud"
+            )
         else:
             model = os.environ.get("LLM_MODEL") or ("gpt-4o" if name == "openai" else "claude-sonnet-4-6")
         api_key = os.environ.get(f"{name.upper()}_API_KEY")
