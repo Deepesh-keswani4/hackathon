@@ -41,7 +41,7 @@ logger = logging.getLogger("hrms")
 def _allow_personal_details() -> bool:
     try:
         from django.conf import settings as s
-        return bool(getattr(s, "ALLOW_DIRECTORY_PERSONAL_DETAILS", False))
+        return bool(getattr(s, "ALLOW_DIRECTORY_PERSONAL_DETAILS", True))
     except Exception:
         return False
 
@@ -687,8 +687,15 @@ def get_largest_teams(
 
     input_data keys:
       - limit  (int)  default 10
+      - min_reports (int) optional, minimum direct reports threshold (e.g. 10)
     """
-    err = ensure_role(requester_role, ["manager", "hr", "cfo", "admin"])
+    allow = _allow_personal_details()
+    allowed_roles = (
+        ["employee", "manager", "hr", "cfo", "admin"]
+        if allow
+        else ["manager", "hr", "cfo", "admin"]
+    )
+    err = ensure_role(requester_role, allowed_roles)
     if err:
         return err
 
@@ -697,17 +704,47 @@ def get_largest_teams(
 
     input_data = input_data or {}
     limit = min(int(input_data.get("limit") or 10), 50)
+    min_reports = input_data.get("min_reports")
+    if min_reports is None:
+        min_reports = input_data.get("min_reportees")
+    if min_reports is None:
+        min_reports = input_data.get("min_direct_reports")
+    try:
+        min_reports = int(min_reports or 0)
+    except (TypeError, ValueError):
+        min_reports = 0
+
+    if min_reports <= 0:
+        query_text = str(input_data.get("query") or "").lower()
+        if "more than" in query_text:
+            tail = query_text.split("more than", 1)[1]
+            digits = "".join(ch for ch in tail if ch.isdigit() or ch == " ")
+            digits = digits.strip().split(" ", 1)[0] if digits.strip() else ""
+            if digits:
+                try:
+                    min_reports = int(digits)
+                except ValueError:
+                    min_reports = 0
 
     req_emp = _requester_emp(requester_id)
     ic = _include_contact(requester_role, -1, req_emp)
 
     managers = (
-        Employee._default_manager
-        .select_related("user", "department")
-        .annotate(report_count=Count("direct_reports", filter=__import__("django.db.models", fromlist=["Q"]).Q(direct_reports__is_active=True)))
+        Employee._default_manager.select_related("user", "department")
+        .annotate(
+            report_count=Count(
+                "direct_reports",
+                filter=__import__("django.db.models", fromlist=["Q"]).Q(
+                    direct_reports__is_active=True
+                ),
+            )
+        )
         .filter(report_count__gt=0, is_active=True)
-        .order_by("-report_count")[:limit]
+        .order_by("-report_count")
     )
+    if min_reports > 0:
+        managers = managers.filter(report_count__gte=min_reports)
+    managers = managers[:limit]
 
     items = []
     for m in managers:
@@ -715,8 +752,17 @@ def get_largest_teams(
         d["direct_report_count"] = m.report_count
         items.append(d)
 
-    logger.info("MCP tool ok tool=get_largest_teams results=%s", len(items))
-    return {"managers_by_team_size": items}
+    logger.info(
+        "MCP tool ok tool=get_largest_teams results=%s min_reports=%s limit=%s allow_personal_details=%s",
+        len(items),
+        min_reports,
+        limit,
+        allow,
+    )
+    return {
+        "managers_by_team_size": items,
+        "filters_applied": {"min_reports": min_reports, "limit": limit},
+    }
 
 
 # ---------------------------------------------------------------------------
