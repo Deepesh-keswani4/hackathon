@@ -373,13 +373,14 @@ def _ensure_leave_balance(emp, LeaveBalance, LeavePolicy):
         if LeaveBalance.objects.filter(employee=emp).exists():
             return
         cl_policy = LeavePolicy.objects.filter(leave_type="CL").first()
-        el_policy = LeavePolicy.objects.filter(leave_type="EL").first()
+        pl_policy = LeavePolicy.objects.filter(leave_type="PL").first()
         sl_policy = LeavePolicy.objects.filter(leave_type="SL").first()
         LeaveBalance.objects.create(
             employee=emp,
-            casual_remaining=cl_policy.annual_allocation if cl_policy else 12,
-            earned_remaining=el_policy.annual_allocation if el_policy else 15,
-            sick_remaining=sl_policy.annual_allocation if sl_policy else 10,
+            casual_remaining=cl_policy.annual_allocation if cl_policy else 6,
+            privilege_remaining=pl_policy.annual_allocation if pl_policy else 18,
+            sick_remaining=sl_policy.annual_allocation if sl_policy else 6,
+            comp_off_remaining=0,
         )
     except Exception:
         pass   # table may not be migrated yet; leave balance created later

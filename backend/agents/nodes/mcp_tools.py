@@ -10,6 +10,19 @@ _TOOLS_BY_INTENT: dict[str, list[str]] = {
     "leave_application": ["create_leave_request", "get_employee_profile", "get_leave_balance", "get_team_calendar", "get_leave_history"],
     # Multi-turn chat flow — tools differ by collection stage (resolved at runtime below)
     "leave_collection": ["get_employee_profile", "get_leave_balance", "get_leave_history"],
+    # Manager leave actions
+    "approve_leave": ["get_pending_approvals", "approve_leave_request", "get_leave_details"],
+    "reject_leave": ["reject_leave_request", "get_leave_details"],
+    "cancel_leave": ["cancel_leave_request", "get_leave_history", "get_leave_details"],
+    # Leave status / actionables
+    "leave_status": ["get_leave_history", "get_leave_balance"],
+    "pending_approvals": ["get_pending_approvals"],
+    # Comp off
+    "comp_off_request": ["request_comp_off", "get_leave_balance"],
+    "comp_off_approve": ["get_pending_approvals", "approve_comp_off", "reject_comp_off"],
+    # Re-notify
+    "renotify_manager": ["renotify_manager", "get_leave_history"],
+    # Other intents
     "burnout_check": ["get_attendance_summary", "get_attendance_anomalies"],
     "review_summary": ["get_employee_goals", "get_review_cycles"],
     "nl_query": ["find_employee_by_name", "get_employee_profile"],
@@ -454,6 +467,216 @@ def _plan_next_tool_call(
     return spec
 
 
+def _parse_leave_intent_input(state: AgentState) -> dict:
+    """
+    For `leave_application` chat intent: extract leave_type, from_date, to_date,
+    reason, is_half_day, half_day_session from the NL query using a fast LLM call.
+
+    When the current message is a short confirmation ("yes", "go ahead", etc.),
+    uses the conversation history to recover the leave details the user already provided.
+    """
+    import datetime
+    import json
+    import re as _re
+
+    input_data = state.get("input_data") or {}
+    query = str(input_data.get("query") or "").strip()
+
+    # If already structured (e.g. from a direct API call), pass through
+    if input_data.get("leave_type") and input_data.get("from_date"):
+        return input_data
+
+    if not query:
+        return input_data
+
+    try:
+        from core.llm.base import LLMMessage
+        from core.llm.factory import LLMProviderFactory
+        provider = LLMProviderFactory.get_provider()
+    except Exception:
+        return input_data
+
+    today = datetime.date.today().isoformat()
+
+    # ── Confirmation shortcut: "yes" / "go ahead" etc. ───────────────────────
+    # If the current message is just a confirmation, use history to recover leave details.
+    _confirmation_words = {
+        "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "go ahead",
+        "please do", "confirm", "submit it", "yes please", "do it",
+        "proceed", "sounds good",
+    }
+    q_normalised = query.lower().strip(".,!? ")
+    if q_normalised in _confirmation_words or query.lower() in _confirmation_words:
+        history = state.get("chat_history") or []
+        # Build a condensed history block for the LLM to extract from
+        history_text = "\n".join(
+            f"{m.get('role','?').upper()}: {(m.get('content') or '')[:500]}"
+            for m in history[-8:]
+        )
+        system = (
+            f"Today is {today}. The user has confirmed a leave request. "
+            "Extract the leave details that were discussed in the conversation history below.\n"
+            "Return ONLY valid JSON:\n"
+            '  leave_type: "CL"|"PL"|"SL"|"CO"|"LOP"\n'
+            '  from_date: "YYYY-MM-DD"\n'
+            '  to_date: "YYYY-MM-DD"\n'
+            '  reason: string\n'
+            '  is_half_day: true/false\n'
+            '  half_day_session: "AM"|"PM"|""\n'
+            "If a field cannot be determined, set it to null.\n"
+            "Resolve all relative dates against today."
+        )
+        user_msg = f"CONVERSATION HISTORY:\n{history_text}\n\nUser now said: \"{query}\""
+        try:
+            resp = provider.complete(
+                [LLMMessage(role="system", content=system), LLMMessage(role="user", content=user_msg)],
+                temperature=0.0,
+            )
+            raw = resp.content.strip()
+            raw = _re.sub(r"^```[a-z]*\n?", "", raw).rstrip("`").strip()
+            parsed = json.loads(raw)
+            merged = {**input_data, **{k: v for k, v in parsed.items() if v not in (None, "")}}
+            logger.info(
+                "leave_application confirmation-recovery: type=%s from=%s to=%s",
+                merged.get("leave_type"), merged.get("from_date"), merged.get("to_date"),
+            )
+            return merged
+        except Exception:
+            logger.exception("leave_application confirmation-recovery failed")
+            return input_data
+
+    # ── Normal path: extract from current message ─────────────────────────────
+    system = (
+        f"Today is {today}. Extract leave request details from the user's message.\n"
+        "Return ONLY valid JSON with these fields:\n"
+        '  leave_type: one of "CL", "PL", "SL", "CO", "LOP"\n'
+        '  from_date: "YYYY-MM-DD" or null\n'
+        '  to_date: "YYYY-MM-DD" or null\n'
+        '  reason: string or ""\n'
+        '  is_half_day: true/false\n'
+        '  half_day_session: "AM" or "PM" or ""\n'
+        '  on_behalf_of: full name of the employee to apply leave for, or "" if applying for self\n'
+        "Rules:\n"
+        "- If only one date given, set both from_date and to_date to that date.\n"
+        "- Resolve relative dates (tomorrow, next Monday, 15th April) against today.\n"
+        "- If no leave_type mentioned, default to CL.\n"
+        "- Half day: 'AM half day' → is_half_day=true, half_day_session=AM.\n"
+        "- 'apply leave for [name]' or 'apply [name]'s leave' → on_behalf_of=[name].\n"
+        'Example: {"leave_type":"CL","from_date":"2026-04-15","to_date":"2026-04-16",'
+        '"reason":"personal work","is_half_day":false,"half_day_session":""}'
+    )
+    # Include last 4 history turns so relative dates and references resolve correctly
+    history = state.get("chat_history") or []
+    messages = [LLMMessage(role="system", content=system)]
+    for m in history[-4:]:
+        role = m.get("role")
+        if role in ("user", "assistant"):
+            messages.append(LLMMessage(role=role, content=(m.get("content") or "")[:400]))
+    messages.append(LLMMessage(role="user", content=query))
+
+    try:
+        resp = provider.complete(messages, temperature=0.0)
+        raw = resp.content.strip()
+        raw = _re.sub(r"^```[a-z]*\n?", "", raw).rstrip("`").strip()
+        parsed = json.loads(raw)
+        merged = {**input_data, **{k: v for k, v in parsed.items() if v not in (None, "")}}
+        logger.info(
+            "leave_application NL parse: type=%s from=%s to=%s half_day=%s",
+            merged.get("leave_type"), merged.get("from_date"),
+            merged.get("to_date"), merged.get("is_half_day"),
+        )
+        return merged
+    except Exception:
+        logger.exception("leave_application NL parse failed; using raw input_data")
+        return input_data
+
+
+def _parse_action_intent_input(state: AgentState, intent: str) -> dict:
+    """
+    For action intents (approve_leave, reject_leave, cancel_leave, etc.):
+    extract the relevant IDs and parameters from the NL query.
+    """
+    input_data = state.get("input_data") or {}
+    query = str(input_data.get("query") or "").strip()
+
+    # Already structured
+    if input_data.get("leave_id") or input_data.get("comp_off_id"):
+        return input_data
+
+    if not query:
+        return input_data
+
+    try:
+        from core.llm.base import LLMMessage
+        from core.llm.factory import LLMProviderFactory
+        import datetime
+        import json
+        import re as _re
+
+        provider = LLMProviderFactory.get_provider()
+    except Exception:
+        return input_data
+
+    intent_schemas = {
+        "approve_leave":   '{"leave_id": <int or null>}',
+        "reject_leave":    '{"leave_id": <int or null>, "rejection_reason": "<string>"}',
+        "cancel_leave":    '{"leave_id": <int or null>}',
+        "renotify_manager": '{"leave_id": <int or null>}',
+        "comp_off_request": (
+            '{"worked_on": "YYYY-MM-DD", "days_claimed": <float 0.5-2.0>, "reason": "<string>"}'
+        ),
+        "comp_off_approve": '{"comp_off_id": <int or null>, "rejection_reason": "<string or empty>", "action": "approve" or "reject"}',
+    }
+    schema = intent_schemas.get(intent, "{}")
+    today = datetime.date.today().isoformat()
+
+    system = (
+        f"Today is {today}. Extract structured data from the user's message for the intent '{intent}'.\n"
+        f"Return ONLY valid JSON matching this shape: {schema}\n"
+        "Set integer IDs to null if not mentioned. Resolve relative dates against today."
+    )
+    try:
+        resp = provider.complete(
+            [LLMMessage(role="system", content=system), LLMMessage(role="user", content=query)],
+            temperature=0.0,
+        )
+        raw = resp.content.strip()
+        raw = _re.sub(r"^```[a-z]*\n?", "", raw).rstrip("`").strip()
+        parsed = json.loads(raw)
+        merged = {**input_data, **{k: v for k, v in parsed.items() if v not in (None, "")}}
+        logger.info("action_intent NL parse intent=%s result=%s", intent, merged)
+        return merged
+    except Exception:
+        logger.exception("action_intent NL parse failed intent=%s", intent)
+        return input_data
+
+
+def _resolve_employee_by_name(name: str, *, manager_employee_id: int, requester_id: int, requester_role: str) -> int | None:
+    """
+    Given a name like 'Guru Laxmi', find the matching Employee pk among the
+    manager's direct reports. Returns None if not found or ambiguous.
+    """
+    if not name:
+        return None
+    try:
+        from apps.employees.models import Employee
+        name_lower = name.strip().lower()
+        reports = Employee.objects.select_related("user").filter(
+            manager_id=manager_employee_id, is_active=True
+        )
+        matches = [e for e in reports if name_lower in (e.user.name or "").lower()]
+        if len(matches) == 1:
+            return matches[0].pk
+        # Try exact full-name match first, fall back to partial
+        exact = [e for e in matches if (e.user.name or "").lower() == name_lower]
+        if len(exact) == 1:
+            return exact[0].pk
+        logger.info("_resolve_employee_by_name name=%r matches=%s", name, len(matches))
+    except Exception:
+        logger.exception("_resolve_employee_by_name failed name=%r", name)
+    return None
+
+
 def run(state: AgentState) -> AgentState:
     try:
         import mcp.tools.attendance_tools
@@ -486,6 +709,29 @@ def run(state: AgentState) -> AgentState:
         tool_names = ["apply_leave_batch"]
         # Build the batch input_data for the tool
         apply_input = {**(state.get("input_data") or {}), "leave_items": state.get("leave_items") or []}
+    elif intent == "leave_application":
+        tool_names = _TOOLS_BY_INTENT.get(intent, [])
+        # Parse the NL query into structured leave fields so create_leave_request can act
+        apply_input = _parse_leave_intent_input(state)
+        # If manager is applying on behalf of a direct report, resolve the name → employee_id
+        on_behalf_of = apply_input.get("on_behalf_of", "")
+        if on_behalf_of and state.get("requester_role") in ("manager", "hr", "admin"):
+            resolved_id = _resolve_employee_by_name(
+                on_behalf_of,
+                manager_employee_id=state.get("employee_id"),
+                requester_id=state.get("requester_id"),
+                requester_role=state.get("requester_role"),
+            )
+            if resolved_id:
+                state = {**state, "employee_id": resolved_id}
+                logger.info(
+                    "on_behalf_of resolved: name=%r → employee_id=%s",
+                    on_behalf_of, resolved_id,
+                )
+    elif intent in ("approve_leave", "reject_leave", "cancel_leave",
+                    "comp_off_request", "comp_off_approve", "renotify_manager"):
+        tool_names = _TOOLS_BY_INTENT.get(intent, [])
+        apply_input = _parse_action_intent_input(state, intent)
     else:
         tool_names = _TOOLS_BY_INTENT.get(intent, [])
         apply_input = state.get("input_data") or {}

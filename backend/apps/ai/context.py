@@ -12,6 +12,8 @@ or calls the embedding provider directly. Both concerns are owned by repositorie
 and ChatEmbedder respectively.
 """
 from __future__ import annotations
+import datetime
+import json
 
 import logging
 
@@ -189,7 +191,7 @@ class ContextService:
             role=role,
             content=content,
             intent=intent,
-            tool_snapshot=tool_snapshot,
+            tool_snapshot=_make_json_safe(tool_snapshot),
             retrieved_docs=retrieved_docs,
             embedding=self._embedder.embed(content),
         )
@@ -211,6 +213,27 @@ class ContextService:
 # ---------------------------------------------------------------------------
 # Module-level pure functions (no state, no IO — safe to unit-test directly)
 # ---------------------------------------------------------------------------
+
+def _make_json_safe(obj):
+    """
+    Recursively convert any non-JSON-serialisable values (datetime.date, datetime.datetime,
+    Decimal, etc.) to their string/float equivalents so Django's JSONField never raises.
+    """
+    if obj is None:
+        return obj
+    if isinstance(obj, dict):
+        return {k: _make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_make_json_safe(v) for v in obj]
+    if isinstance(obj, (datetime.date, datetime.datetime)):
+        return obj.isoformat()
+    # Round-trip through JSON to catch anything else (Decimal, etc.)
+    try:
+        json.dumps(obj)
+        return obj
+    except TypeError:
+        return str(obj)
+
 
 def _llm_summary(messages: list) -> str:
     """

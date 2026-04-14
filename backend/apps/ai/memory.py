@@ -81,13 +81,16 @@ class ChatMemoryCache:
             self._push_tool_snapshot(session_id, tool_results)
 
     def _push_tool_snapshot(self, session_id: str, tool_results: dict) -> None:
+        import json as _json
         tools_key = CacheKeys.chat_tool_results(session_id)
         try:
             existing = self._cache.get(tools_key) or []
-            compact = {
+            raw_compact = {
                 k: v for k, v in tool_results.items()
                 if isinstance(v, dict) and "error" not in v
             }
+            # Sanitise: convert date/datetime/Decimal etc. to JSON-safe types
+            compact = _json.loads(_json.dumps(raw_compact, default=str))
             if compact:
                 existing.append(compact)
                 if len(existing) > _TOOL_TURNS:

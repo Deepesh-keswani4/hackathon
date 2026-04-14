@@ -29,9 +29,17 @@ def run(state: AgentState) -> AgentState:
             docs = policy_retrieve(query, document_name=name, k=5)
         except Exception as exc:
             logger.exception("Policy RAG retrieval failed")
-            docs = retrieve(state.get("intent", "nl_query"), query, k=3)
+            try:
+                docs = retrieve(state.get("intent", "nl_query"), query, k=3)
+            except Exception:
+                logger.exception("Fallback RAG retrieval also failed")
+                docs = []
     else:
-        docs = retrieve(state.get("intent", "nl_query"), query, k=3)
+        try:
+            docs = retrieve(state.get("intent", "nl_query"), query, k=3)
+        except Exception:
+            logger.exception("RAG retrieval failed")
+            docs = []
     state["retrieved_docs"] = docs
     logger.info("RAG node complete intent=%s docs=%s", state.get("intent"), len(docs))
     return state

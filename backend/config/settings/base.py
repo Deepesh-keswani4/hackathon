@@ -197,6 +197,16 @@ CELERY_RESULT_EXTENDED = True
 CELERY_RESULT_BACKEND_ALWAYS_RETRY = True
 CELERY_RESULT_EXPIRES = 60 * 60 * 24 * 7  # 7 days
 
+from celery.schedules import crontab  # noqa: E402
+
+CELERY_BEAT_SCHEDULE = {
+    # Runs at 00:01 on the 1st of every month — accrues CL/PL/SL for all active employees
+    "monthly-leave-accrual": {
+        "task": "tasks.leave_tasks.accrue_monthly_leaves",
+        "schedule": crontab(minute=1, hour=0, day_of_month=1),
+    },
+}
+
 # Security headers (safe defaults for all environments)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"

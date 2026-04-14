@@ -27,9 +27,33 @@ def route(state: AgentState) -> str:
         logger.info("Router: active collection_stage=%s; resuming leave_collection", active_stage)
         return "leave_collection"
 
-    q = str(input_data.get("query") or "").lower()
+    q = str(input_data.get("query") or "").lower().strip()
     if not q:
         return "nl_query"
+
+    # ── Confirmation detection — must run BEFORE keyword routing ─────────────
+    # Catches "yes", "yes please", "go ahead", "confirm", "sure", "ok" etc.
+    # when the conversation history shows the assistant was about to submit a leave.
+    _confirmation_words = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay",
+                           "go ahead", "please do", "confirm", "submit it",
+                           "yes please", "do it", "proceed", "sounds good"}
+    q_stripped = q.strip(".,!? ")
+    if q_stripped in _confirmation_words or q in _confirmation_words:
+        history = state.get("chat_history") or []
+        # Check if the last assistant message was asking the user to confirm a leave submission
+        _leave_confirm_signals = (
+            "submit this leave", "shall i submit", "go ahead and submit",
+            "would you like me to submit", "if you'd like me to go ahead",
+            "shall i go ahead", "confirm the leave", "should i apply",
+            "lock it in", "just let me know",
+        )
+        for msg in reversed(history[-6:]):
+            if msg.get("role") == "assistant":
+                assistant_text = (msg.get("content") or "").lower()
+                if any(sig in assistant_text for sig in _leave_confirm_signals):
+                    logger.info("Router: confirmation detected after leave-submit prompt; routing to leave_application")
+                    return "leave_application"
+                break  # Only check the most recent assistant message
 
     try:
         from agents.intent_registry import INTENTS
@@ -39,11 +63,66 @@ def route(state: AgentState) -> str:
         LLMProviderFactory = None
 
     # ── Fast keyword routing — runs before embeddings to avoid slow embed calls ──
-    _multi_leave_kws = ("sl", "cl", "el", "pl", "multiple leave", "sick and casual", "2 sl", "3 cl", "1 pl")
-    if any(k in q for k in _multi_leave_kws) and any(k in q for k in ("apply", "request", "want", "need", "take")):
+
+    # Multi-leave collection: only when the query explicitly asks for 2+ types together
+    _explicit_multi = (
+        "multiple leave", "sick and casual", "sl and cl", "cl and sl", "cl and pl",
+        "pl and sl", "2 sl", "3 cl", "1 pl", "1 sl", "2 cl", "2 pl",
+        "sick leave and", "casual leave and", "privilege leave and",
+        "sick leave for", "casual leave for",  # catches "sick leave for N days and casual leave"
+    )
+    # A query is multi-leave if it mentions two or more distinct leave type keywords
+    _leave_type_kws = ("sick leave", "casual leave", "privilege leave", "comp off", " sl ", " cl ", " pl ")
+    _type_count = sum(1 for kw in _leave_type_kws if kw in f" {q} ")
+    if (_type_count >= 2 or any(k in q for k in _explicit_multi)) and any(k in q for k in ("apply", "request", "want", "need", "take")):
         return "leave_collection"
-    if any(k in q for k in ("apply leave", "apply for leave", "leave from", "leave to", "leave days", "request leave")):
+
+    # Single-leave application — includes typed abbreviations with dates/apply keywords
+    _single_apply_kws = (
+        "apply leave", "apply for leave", "leave from", "leave to",
+        "leave days", "request leave", "take leave",
+        "half day", "half-day", "am leave", "pm leave",
+        "lop", "loss of pay",
+        # Abbreviation + action: "apply cl", "take sl", "request pl", etc.
+        "apply cl", "apply sl", "apply pl", "apply co", "apply lop",
+        "take cl", "take sl", "take pl", "take co",
+        "request cl", "request sl", "request pl", "request co",
+        "cl for", "sl for", "pl for", "co for",
+        "cl from", "sl from", "pl from", "co from",
+        "cl leave", "sl leave", "pl leave",
+        "casual leave", "sick leave", "privilege leave", "comp off leave",
+    )
+    if any(k in q for k in _single_apply_kws):
         return "leave_application"
+
+    # ── Manager leave actions ─────────────────────────────────────────────────
+    if any(k in q for k in ("approve leave", "approve the leave", "grant leave", "give approval for leave")):
+        return "approve_leave"
+    if any(k in q for k in ("reject leave", "reject the leave", "decline leave", "cannot approve")):
+        return "reject_leave"
+    if any(k in q for k in ("cancel leave", "cancel my leave", "withdraw leave", "cancel the leave", "applied by mistake")):
+        return "cancel_leave"
+
+    # ── Comp Off ──────────────────────────────────────────────────────────────
+    if any(k in q for k in ("comp off", "comp-off", "compensatory off", "compensatory leave", "worked on sunday",
+                            "worked on holiday", "worked on weekend", "claim comp", "request comp")):
+        return "comp_off_request"
+    if any(k in q for k in ("approve comp off", "approve comp-off", "reject comp off", "grant comp off")):
+        return "comp_off_approve"
+
+    # ── Re-notify / reminders ──────────────────────────────────────────────────
+    if any(k in q for k in ("remind manager", "re-notify", "renotify", "no action on my leave",
+                            "nudge manager", "still pending", "remind about leave")):
+        return "renotify_manager"
+
+    # ── Leave status / pending approvals ─────────────────────────────────────
+    if any(k in q for k in ("my pending leaves", "my leave status", "leave status", "my approved leaves",
+                            "show my leaves", "my leave requests", "list my leaves")):
+        return "leave_status"
+    if any(k in q for k in ("pending approvals", "pending leaves to approve", "my actionables",
+                            "actionables", "awaiting my approval", "leaves to approve")):
+        return "pending_approvals"
+
     if any(k in q for k in ("burnout", "overworked", "stress", "overtime", "fatigue", "exhausted")):
         return "burnout_check"
     if any(k in q for k in ("review", "performance review", "appraisal", "360", "feedback", "rating", "goal")):

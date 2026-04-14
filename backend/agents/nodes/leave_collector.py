@@ -26,14 +26,22 @@ from agents.state import AgentState
 
 logger = logging.getLogger("hrms")
 
-LEAVE_TYPE_NAMES = {"CL": "Casual Leave", "EL": "Earned / Privilege Leave", "SL": "Sick Leave"}
+LEAVE_TYPE_NAMES = {
+    "CL": "Casual Leave",
+    "PL": "Privilege Leave",
+    "SL": "Sick Leave",
+    "CO": "Comp Off",
+    "LOP": "Loss of Pay",
+}
 
 # Alias map used as a fast fallback when the LLM is unavailable
 _LEAVE_TYPE_MAP = {
     "cl": "CL", "casual": "CL", "casual leave": "CL",
-    "el": "EL", "earned": "EL", "earned leave": "EL",
-    "pl": "EL", "privilege": "EL", "privilege leave": "EL",
+    "el": "PL", "earned": "PL", "earned leave": "PL",
+    "pl": "PL", "privilege": "PL", "privilege leave": "PL",
     "sl": "SL", "sick": "SL", "sick leave": "SL", "medical": "SL",
+    "co": "CO", "comp off": "CO", "comp-off": "CO", "compensatory": "CO", "compoff": "CO",
+    "lop": "LOP", "loss of pay": "LOP", "lwp": "LOP",
 }
 
 
@@ -258,11 +266,11 @@ def _llm_parse_leave_types(text: str, state: AgentState) -> list[dict] | None:
 
     system = (
         "You are a leave-request parser. Given a user sentence, extract all requested leave types and their day counts.\n"
-        "Return ONLY a JSON array of objects with fields: type (one of CL, EL, SL), days (integer).\n"
-        "Mappings: casual/CL → CL; earned/privilege/PL/EL → EL; sick/SL/medical → SL.\n"
+        "Return ONLY a JSON array of objects with fields: type (one of CL, PL, SL, CO, LOP), days (integer).\n"
+        "Mappings: casual/CL → CL; earned/privilege/PL/EL → PL; sick/SL/medical → SL; comp-off/CO → CO; loss-of-pay/LOP → LOP.\n"
         "If nothing can be extracted return an empty array [].\n"
         "Example input: 'I want 2 SL, 3 CL and 1 PL'\n"
-        'Example output: [{"type":"SL","days":2},{"type":"CL","days":3},{"type":"EL","days":1}]'
+        'Example output: [{"type":"SL","days":2},{"type":"CL","days":3},{"type":"PL","days":1}]'
     )
     try:
         resp = provider.complete(
@@ -280,7 +288,7 @@ def _llm_parse_leave_types(text: str, state: AgentState) -> list[dict] | None:
         for item in parsed:
             t = str(item.get("type") or "").upper()
             d = item.get("days")
-            if t in ("CL", "EL", "SL") and d and t not in seen:
+            if t in ("CL", "PL", "SL", "CO", "LOP") and d and t not in seen:
                 result.append({"type": t, "days": int(d)})
                 seen.add(t)
         logger.info("LLM parsed leave types: %s", result)

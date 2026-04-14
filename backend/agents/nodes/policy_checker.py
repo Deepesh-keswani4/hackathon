@@ -25,13 +25,26 @@ from agents.state import AgentState
 logger = logging.getLogger("hrms")
 
 _DEFAULT_LIMITS: dict[str, dict] = {
-    "CL": {"max_consecutive": 2,  "annual": 12},
-    "EL": {"max_consecutive": 15, "annual": 15},
-    "SL": {"max_consecutive": 3,  "annual": 10},
+    "CL":  {"max_consecutive": 2,  "annual": 12},
+    "PL":  {"max_consecutive": 15, "annual": 18},
+    "SL":  {"max_consecutive": 3,  "annual": 6},
+    "CO":  {"max_consecutive": 2,  "annual": 999},
+    "LOP": {"max_consecutive": 30, "annual": 999},
 }
 
-_BALANCE_FIELD = {"CL": "casual_remaining", "EL": "earned_remaining", "SL": "sick_remaining"}
-_TYPE_NAMES    = {"CL": "Casual Leave",      "EL": "Earned / Privilege Leave", "SL": "Sick Leave"}
+_BALANCE_FIELD = {
+    "CL": "casual_remaining",
+    "PL": "privilege_remaining",
+    "SL": "sick_remaining",
+    "CO": "comp_off_remaining",
+}
+_TYPE_NAMES = {
+    "CL": "Casual Leave",
+    "PL": "Privilege Leave",
+    "SL": "Sick Leave",
+    "CO": "Comp Off",
+    "LOP": "Loss of Pay",
+}
 
 
 def run(state: AgentState) -> AgentState:
@@ -155,7 +168,7 @@ def _llm_evaluate(leave_items: list[dict], balance: dict, policy_text: str, stat
         result = []
         for v in violations:
             lt = str(v.get("leave_type") or "").upper()
-            if lt not in ("CL", "EL", "SL"):
+            if lt not in ("CL", "PL", "SL", "CO", "LOP"):
                 continue
             result.append({
                 "leave_type": lt,
@@ -244,9 +257,10 @@ def _get_balance(state: AgentState) -> dict:
         bal = LeaveBalance.objects.filter(employee_id=state.get("employee_id")).first()
         if bal:
             balance = {
-                "casual_remaining":  float(bal.casual_remaining),
-                "earned_remaining":  float(bal.earned_remaining),
-                "sick_remaining":    float(bal.sick_remaining),
+                "casual_remaining":    float(bal.casual_remaining),
+                "privilege_remaining": float(bal.privilege_remaining),
+                "sick_remaining":      float(bal.sick_remaining),
+                "comp_off_remaining":  float(bal.comp_off_remaining),
             }
     except Exception:
         logger.exception("PolicyChecker: DB balance fetch failed")

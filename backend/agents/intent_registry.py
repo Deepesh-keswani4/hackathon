@@ -1,13 +1,13 @@
 INTENTS = {
     "leave_collection": {
         "description": (
-            "User wants to apply for one or more leave types (SL, CL, EL/PL) in a single conversation, "
-            "possibly providing dates and reasons across multiple turns."
+            "User wants to apply for one or more leave types (SL, CL, PL, CO, LOP) in a single "
+            "conversation, possibly providing dates and reasons across multiple turns."
         ),
         "examples": [
             "I want to apply 2 SL and 3 CL",
             "Apply 1 privilege leave and 2 sick leaves",
-            "Request 3 casual leave and 1 earned leave",
+            "Request 3 casual leave and 1 privilege leave",
             "I need sick leave for 2 days and casual leave for 3 days",
             "Apply leave: SL 2 days, CL 3 days, PL 1 day",
             "I want to take 2 sick leaves from Monday",
@@ -22,16 +22,106 @@ INTENTS = {
             "Request 2 days casual leave",
             "Can I take sick leave tomorrow",
             "Apply leave for three days",
+            "I need half day tomorrow morning",
+            "Take AM half day on Friday",
+            "Apply LOP for 2 days",
+        ],
+    },
+    "approve_leave": {
+        "description": "Manager wants to approve a leave request.",
+        "examples": [
+            "Approve leave #42",
+            "Approve John's leave request",
+            "I want to approve the pending leave",
+            "Go ahead and approve leave 15",
+            "Approve all pending leaves from my team",
+            "Give approval for leave request 7",
+        ],
+    },
+    "reject_leave": {
+        "description": "Manager wants to reject a leave request with an optional reason.",
+        "examples": [
+            "Reject leave #42",
+            "Reject John's leave request because we have a project deadline",
+            "Decline leave 15",
+            "I cannot approve this leave — reject it",
+            "Reject the pending leave for Priya",
+        ],
+    },
+    "cancel_leave": {
+        "description": "Employee cancels their own pending leave. Manager cancels a team member's leave.",
+        "examples": [
+            "Cancel my leave",
+            "Cancel my leave from April 20",
+            "I want to withdraw my sick leave",
+            "Cancel leave #33",
+            "Please cancel the leave I applied yesterday",
+            "Cancel Ravi's leave applied by mistake",
+        ],
+    },
+    "comp_off_request": {
+        "description": "Employee requests comp off credit for working on a holiday or weekend.",
+        "examples": [
+            "I worked on Sunday, need comp off",
+            "Request comp off for working on 13th April",
+            "I came to office on a holiday, please give me comp off",
+            "Claim 1 comp off for working on weekend",
+            "Apply for compensatory off",
+            "I worked on Republic Day, need a comp off day",
+        ],
+    },
+    "comp_off_approve": {
+        "description": "Manager approves or rejects a comp off request.",
+        "examples": [
+            "Approve comp off #5",
+            "Approve Ravi's comp off request",
+            "Reject comp off #3 — he didn't really work",
+            "Grant the comp off to Priya",
+            "Review pending comp off requests",
+        ],
+    },
+    "renotify_manager": {
+        "description": "Employee re-notifies their manager about a pending leave that has had no action.",
+        "examples": [
+            "Remind my manager about my pending leave",
+            "No response on my leave, please re-notify",
+            "Send reminder to my manager for leave #12",
+            "My leave is still pending, nudge manager",
+            "Re-send the leave notification",
+        ],
+    },
+    "leave_status": {
+        "description": "Employee checks the status of their leave requests or pending leaves.",
+        "examples": [
+            "What is the status of my leave",
+            "Show my pending leaves",
+            "Are any of my leaves approved",
+            "Show my leave requests",
+            "What happened to my leave application",
+            "List my approved leaves",
+            "Show rejected leaves",
+        ],
+    },
+    "pending_approvals": {
+        "description": "Manager views pending leave and comp off requests from their team.",
+        "examples": [
+            "What are my pending approvals",
+            "Show pending leaves from my team",
+            "Any leave requests awaiting my action",
+            "How many pending leaves do I have to approve",
+            "Show me my actionables",
+            "Who has applied for leave that I haven't approved",
         ],
     },
     "policy_query": {
         "description": "User asks about company policies or handbook.",
         "examples": [
             "What is the leave policy",
+            "How many days of casual leave do I get",
+            "What is the privilege leave policy",
             "Show me the security policy guidelines",
-            "Where is the employee handbook",
-            "What are the rules for remote work",
-            "Explain overtime policy",
+            "What are the rules for sick leave",
+            "Can I backdate a leave",
         ],
     },
     "employee_query": {
@@ -40,81 +130,42 @@ INTENTS = {
             "manager hierarchy, department headcount, peers, new hires, or employee directory."
         ),
         "examples": [
-            # Self profile
             "Who am I?",
             "What is my role?",
             "Show me my profile",
-            "What department am I in?",
-            "What is my employee ID?",
-            "What is my title?",
-            # Manager / reporting
             "Who is my manager?",
-            "Who is John's manager?",
             "Who does Sarah report to?",
-            "Show me the reporting chain for EMP003",
-            "Who does Alice ultimately report to?",
-            "What is the management hierarchy above Bob?",
-            # Direct reports / team
             "Who is in my team?",
             "Who reports to me?",
             "List my direct reports",
-            "How many people do I manage?",
-            "Who are Alice's direct reports?",
-            "Show me everyone under Bob",
-            "Who reports to EMP005?",
-            # Peers
             "Who are my peers?",
-            "Who are John's teammates?",
-            "Who else is in the same team as Sarah?",
-            "Show me my colleagues",
-            # Org tree
             "Show me the org chart under Alice",
-            "Give me the full team structure for EMP010",
-            "What does John's org look like?",
-            "Who is under the Engineering manager?",
-            # Department
             "List all employees in Engineering",
-            "Who is in the HR department?",
-            "Show everyone in Finance",
-            "How many people are in Sales?",
-            "What departments exist?",
-            "Which is the largest department?",
-            "List all teams in the company",
-            # Search / filter
-            "Find all senior engineers",
             "Who joined this year?",
-            "Show employees with title Lead",
-            "List all active managers",
-            "Find employees in Engineering",
-            # Largest teams
             "Who has the largest team?",
-            "Which manager manages the most people?",
-            "Top managers by team size",
-            "Who has the most direct reports?",
-            # New hires
-            "Who joined recently?",
-            "New hires this month",
-            "Who has joined in the last 90 days?",
-            "List recent joiners",
-            # Role-based
             "List all managers",
-            "Who are the HR people?",
-            "Show all admins",
-            "Who is the CFO?",
-            # By employee ID string
             "Show me details for EMP007",
-            "Who is employee EMP001?",
-            "Get profile of EMP-012",
-            # Contact info
             "What is Priya's phone number?",
-            "Give me John's email address",
-            "What is the email of Amit Sharma?",
-            "How do I contact Ravi?",
-            # Name search
             "Find John",
-            "Search for someone named Priya",
-            "Is there an employee called Neha Sharma?",
-            "Who is Guru Laxmi?",
+            "leave balance",
+            "my balance",
+            "attendance",
+        ],
+    },
+    "burnout_check": {
+        "description": "Check burnout indicators for an employee.",
+        "examples": [
+            "Check if Priya is burned out",
+            "Is my team overworked",
+            "Show burnout signals",
+        ],
+    },
+    "review_summary": {
+        "description": "Get performance review or appraisal summary.",
+        "examples": [
+            "Show performance review",
+            "Appraisal summary for Q4",
+            "How is John's rating",
         ],
     },
     "nl_query": {
