@@ -64,6 +64,11 @@ class ChatService:
         session = self._ctx.get_or_create_session(user, employee_id, session_id=session_id)
         session_id_str = str(session.id)
 
+        # Auto-title the session from the first user message
+        if not session.title:
+            session.title = message[:60].strip()
+            session.save(update_fields=["title"])
+
         # Persist user message to DB
         self._ctx.add_user_message(session, message)
 

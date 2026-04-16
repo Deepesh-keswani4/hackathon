@@ -10,6 +10,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.ai.repositories import ChatSessionRepository, ChatMessageRepository
 from apps.ai.services import ChatService
 from core.permissions import IsEmployee
 from core.utils import error_response
@@ -152,3 +153,52 @@ class ChatView(APIView):
     def _leave_collection_fields(result: dict) -> dict:
         """Extract only the leave-collection fields from the agent result."""
         return {k: result[k] for k in _LEAVE_COLLECTION_FIELDS if k in result}
+
+
+class ChatSessionListView(APIView):
+    """
+    GET /api/ai/sessions/
+    Returns the authenticated user's most recent chat sessions.
+    """
+    permission_classes = [IsEmployee]
+
+    def get(self, request):
+        sessions = ChatSessionRepository().list_for_user(request.user.id, limit=20)
+        data = [
+            {
+                "session_id": str(s.id),
+                "title": s.title or "",
+                "last_active_at": s.last_active_at.isoformat(),
+                "created_at": s.created_at.isoformat(),
+            }
+            for s in sessions
+        ]
+        return Response({"sessions": data}, status=status.HTTP_200_OK)
+
+
+class ChatSessionMessagesView(APIView):
+    """
+    GET /api/ai/sessions/<session_id>/messages/
+    Returns all user/assistant messages for a session owned by the requester.
+    """
+    permission_classes = [IsEmployee]
+
+    def get(self, request, session_id):
+        session = ChatSessionRepository().get_active(session_id, request.user.id)
+        if not session:
+            return Response(
+                error_response("Session not found", "SESSION_NOT_FOUND"),
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        messages = ChatMessageRepository().get_recent(session, limit=200)
+        data = [
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in messages
+            if m.role in ("user", "assistant")
+        ]
+        return Response({"messages": data, "session_id": str(session.id)}, status=status.HTTP_200_OK)

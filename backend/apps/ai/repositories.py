@@ -25,6 +25,14 @@ class ChatSessionRepository:
             .first()
         )
 
+    def list_for_user(self, user_id: int, *, limit: int = 20) -> list:
+        """Return the most recent `limit` active sessions for a user."""
+        from apps.ai.models import ChatSession
+        return list(
+            ChatSession.objects.filter(user_id=user_id, is_active=True)
+            .order_by("-last_active_at")[:limit]
+        )
+
     def create(self, *, user_id: int, employee_id: int) -> object:
         """Create and return a new session."""
         from apps.ai.models import ChatSession
