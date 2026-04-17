@@ -144,6 +144,7 @@ def _notify_manager_new_leave(instance: LeaveRequest):
                 "spof_flag": instance.spof_flag,
                 "ai_insights": "pending",
                 "action_required": True,
+                "requester_email": employee.user.email if employee and employee.user else "",
             },
         )
         logger.info(

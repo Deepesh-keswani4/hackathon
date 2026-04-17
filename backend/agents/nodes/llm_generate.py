@@ -108,27 +108,38 @@ def _get_system_prompt(state: AgentState) -> str:
         "Use only the provided tool_results and retrieved_docs for factual answers. "
         "Do not invent dates, balances, policies, emails, or approvals.\n"
         "If prior_turn_tool_results is present, it contains data fetched in earlier turns of "
-        "this conversation — treat it as trusted context when answering follow-up questions."
+        "this conversation — treat it as trusted context when answering follow-up questions.\n\n"
+        "CHART INSTRUCTIONS: When the user asks for a chart, graph, visualization, or 'show as chart', "
+        "output a ```chart code block containing ONLY valid JSON with this exact schema:\n"
+        '{"type":"bar"|"line"|"pie"|"area","title":"string","data":[{...}],"xKey":"string","yKeys":["string"]}\n'
+        "Rules:\n"
+        "- 'data' is an array of objects; each object has the xKey field plus one or more yKey fields with numeric values.\n"
+        "- For pie charts: use 'name' as xKey and 'value' as the single yKey.\n"
+        "- Output the chart block FIRST, then a brief text summary after it.\n"
+        "- Only emit a chart block when the user explicitly requests a chart/graph/visualization.\n"
+        "- Do NOT emit a chart block for table requests — use markdown tables for those."
     )
 
     if intent == "leave_collection":
         prompt = _leave_collection_prompt(state)
     elif intent == "leave_application":
         prompt = (
-            "You are an HRMS leave assistant. The MCP tool `create_leave_request` has already run.\n\n"
-            "CRITICAL RULES — read carefully:\n"
-            "1. If tool_results.create_leave_request.status == 'ok': the leave has been SUCCESSFULLY SUBMITTED. "
-            "   Confirm this to the user with a clear success message. Show a summary table: leave type, dates, days, leave ID. "
-            "   State that the manager has been notified and will receive an AI-powered context card shortly. "
-            "   Also show the updated leave balance from tool_results.get_leave_balance if available.\n"
-            "2. If tool_results.create_leave_request contains an 'error' key: tell the user exactly what went wrong "
-            "   (e.g. insufficient balance, date conflict) and suggest what they can do (adjust dates, choose different type).\n"
-            "3. If tool_results.create_leave_request.deduped == true: tell the user this request already exists (show the leave ID).\n"
-            "4. NEVER say 'I cannot submit', 'log into the portal', or 'contact your manager manually'. "
-            "   The system already did the action. Your job is to confirm it clearly.\n"
-            "5. Mention spof_flag=True as a warning: 'Note: you are flagged as a single point of failure — "
-            "   your manager will see this in the context card.'\n"
-            "6. Mention conflict_detected=True as an advisory: 'There are overlapping team leaves during this period.'"
+            "You are an HRMS leave assistant. The MCP tool `create_leave_request` has been called.\n\n"
+            "CRITICAL RULES — follow exactly:\n"
+            "1. If tool_results.create_leave_request.status == 'ok': leave SUCCESSFULLY SUBMITTED. "
+            "   Confirm with a clear success message. Show summary table: leave type, dates, days count, "
+            "   and the leave ID from tool_results.create_leave_request.leave_id (always show the actual number, never '–'). "
+            "   State manager has been notified. Show updated balance from tool_results.get_leave_balance if available.\n"
+            "2. If tool_results.create_leave_request contains 'error' key OR status == 'noop': "
+            "   tell the user the leave could NOT be submitted and explain why "
+            "   (e.g. insufficient balance, missing dates, date conflict). Suggest fixes.\n"
+            "3. If tool_results.create_leave_request is ABSENT (key not in tool_results): "
+            "   say there was a technical issue processing the request and ask the user to try again.\n"
+            "4. If tool_results.create_leave_request.deduped == true: tell user this request already exists (show the leave ID).\n"
+            "5. NEVER fabricate a success when rule 2 or rule 3 applies. Accuracy over optimism.\n"
+            "6. NEVER say 'log into the portal' or 'contact your manager manually' — always explain the actual outcome.\n"
+            "7. Mention spof_flag=True as a warning: 'Note: you are flagged as a single point of failure.'\n"
+            "8. Mention conflict_detected=True as an advisory: 'There are overlapping team leaves during this period.'"
         )
     elif intent == "approve_leave":
         prompt = (
@@ -140,9 +151,11 @@ def _get_system_prompt(state: AgentState) -> str:
             "   Show leave type, dates, days. State the employee has been notified.\n"
             "   If multiple leaves were approved in one request, list all of them clearly.\n"
             "2. If any result has an 'error': explain it (not their direct report, already approved, etc.).\n"
-            "3. If tool_results.get_pending_approvals is present and no approve_leave_request was called yet, "
-            "   list the pending leaves clearly and ask the manager which one to approve (show leave IDs).\n"
-            "4. NEVER say you cannot approve — the system already performed the action.\n"
+            "3. If tool_results.get_pending_approvals is present and NO approve_leave_request key exists in tool_results: "
+            "   the leave ID was not identified. Show the pending leaves table with leave IDs clearly. "
+            "   Tell the manager to click 'Approve' on the notification bubble or say 'Approve leave #<ID>'. "
+            "   Do NOT claim any approval happened.\n"
+            "4. NEVER report success if no approve_leave_request result is present.\n"
             "5. Be concise. A manager's time is valuable."
         )
     elif intent == "reject_leave":
@@ -153,7 +166,8 @@ def _get_system_prompt(state: AgentState) -> str:
             "   Confirm: 'Leave #<id> has been rejected.' Show the rejection reason. "
             "   State that the employee has been notified.\n"
             "2. If there is an 'error': explain it clearly.\n"
-            "3. NEVER say you cannot reject — the system already performed the action."
+            "3. If tool_results.reject_leave_request is absent: show pending approvals from get_pending_approvals "
+            "   and ask manager to say 'Reject leave #<ID> reason <reason>'. Do NOT claim rejection happened."
         )
     elif intent == "cancel_leave":
         prompt = (

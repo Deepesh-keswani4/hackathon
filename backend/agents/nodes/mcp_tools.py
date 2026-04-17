@@ -852,6 +852,10 @@ def run(state: AgentState) -> AgentState:
         elif intent == "comp_off_approve":
             action_tool = "approve_comp_off" if apply_input.get("action") != "reject" else "reject_comp_off"
 
+        # Determine if we actually have an ID to act on
+        has_leave_id = bool(apply_input.get("leave_id") or leave_ids)
+        has_comp_off_id = bool(apply_input.get("comp_off_id") or comp_off_ids)
+
         if action_tool and len(leave_ids) > 1:
             # One spec for get_pending_approvals (shared), then one per leave ID
             call_specs = [{"tool_name": n, "input_data": apply_input} for n in tool_names if n != action_tool]
@@ -861,6 +865,16 @@ def run(state: AgentState) -> AgentState:
             call_specs = [{"tool_name": n, "input_data": apply_input} for n in tool_names if n != action_tool]
             for cid in comp_off_ids:
                 call_specs.append({"tool_name": action_tool, "input_data": {**apply_input, "comp_off_id": cid}, "_bulk_key": f"{action_tool}_{cid}"})
+        elif action_tool and intent in ("approve_leave", "reject_leave", "cancel_leave") and not has_leave_id:
+            # No leave_id extracted — only fetch pending approvals so LLM can ask for clarification
+            call_specs = [{"tool_name": n, "input_data": apply_input} for n in tool_names if n not in (
+                "approve_leave_request", "reject_leave_request", "cancel_leave_request"
+            )]
+        elif action_tool and intent == "comp_off_approve" and not has_comp_off_id:
+            # No comp_off_id extracted — only fetch pending approvals
+            call_specs = [{"tool_name": n, "input_data": apply_input} for n in tool_names if n not in (
+                "approve_comp_off", "reject_comp_off"
+            )]
         else:
             call_specs = [{"tool_name": n, "input_data": apply_input} for n in tool_names]
 

@@ -131,6 +131,17 @@ class ProcessLeaveApprovalTask(BaseHRMSTask):
 
         recipient = leave.employee.user.email if hasattr(leave.employee, "user") and leave.employee.user else ""
         if recipient:
+            # Idempotency guard — skip if approval notification already sent for this leave
+            from apps.notifications.models import InAppNotification
+            already_notified = InAppNotification.objects.filter(
+                recipient_email=recipient,
+                metadata__leave_id=leave_id,
+                metadata__status="APPROVED",
+            ).exists()
+            if already_notified:
+                logger.info("Approval notification already sent leave_id=%s, skipping duplicate", leave_id)
+                return {"status": "ok", "skipped": True}
+
             from apps.leaves.models import LeaveBalance
 
             bal = LeaveBalance.objects.filter(employee_id=leave.employee_id).first()
