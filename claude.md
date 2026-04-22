@@ -305,3 +305,123 @@ Local dev (`.env.local`): change hosts to `localhost`, set `DJANGO_SETTINGS_MODU
 - `ChartBlock` renders via `recharts` (bar/line/pie/area) with brand colors.
 - `AssistantContent` renders both charts and markdown in same message.
 - Trigger phrases: "show as chart", "bar chart", "pie chart", "visualize", "graph".
+
+---
+
+## 12. Notification Bugs & Leave Approval Fixes (Session 2026-04-17)
+
+### Duplicate Approval Notifications (4× "Leave Approved" to employee)
+- **Root cause:** `LeaveService.approve()` called `write_repo.update()` twice — first for `status+approver`, then a second time for `balance_deducted`. Each `save()` fires `post_save` signal → 2 `process_leave_approval` tasks queued. With `max_retries=3` + timing, this produced up to 4 notifications.
+- **Fixed (`apps/leaves/services.py`):** Compute balance deduction BEFORE calling `write_repo.update()`. Single combined `update(status, approver, balance_deducted)` → signal fires exactly once.
+- **Fixed (`tasks/leave_tasks.py`):** Added idempotency guard in `ProcessLeaveApprovalTask.execute()`:
+  ```python
+  already_notified = InAppNotification.objects.filter(
+      recipient_email=recipient,
+      metadata__leave_id=leave_id,
+      metadata__status="APPROVED",
+  ).exists()
+  if already_notified:
+      return {"status": "ok", "skipped": True}
+  ```
+
+### Bell Counter Double-Count (showing 11+ vs actual unread)
+- **Root cause:** Initial REST load sets `unreadCount(N)`. WS `_send_unread()` flush on connect pushes same N notifications → each increments counter → total = 2N.
+- **Fixed (`ChatPage.tsx`):** `seenNotifIds = useRef<Set<number>>(new Set())`. Pre-populate from REST load. WS handler only increments counter for IDs not already in set.
+
+### Duplicate Notification Bubbles in Chat
+- **Root cause:** WS reconnects trigger another `_send_unread()` flush → same `notificationId` appears multiple times in messages array.
+- **Fixed:** Before adding WS notification to `messages`, check `prev.some((m) => m.notificationId === data.id)` — skip if already shown.
+
+### Approve CTA → INVALID_INPUT Error
+- **Root cause:** `buildCTAs` used employee name in action string: `"Approve leave for Dinesh Verma"`. `_parse_action_intent_input` regex finds no integer → `leave_id=null` → backend returns `INVALID_INPUT`.
+- **Fixed:** Always use `Approve leave #${leaveId}` / `Reject leave #${leaveId}` — integer always present.
+
+### LLM Hallucinating Leave Submission Success
+- **Root cause:** Old prompt rule "NEVER say I cannot submit" caused LLM to fabricate success even when `create_leave_request` was absent from `tool_results`.
+- **Fixed (`agents/nodes/llm_generate.py`):** Added explicit rule: if `tool_results.create_leave_request` key is absent → report technical error, ask user to retry. Rule "NEVER fabricate success when tool result absent or errored."
+
+### Manager Sees "No Pending Actionables" When Leave Skipped by LLM
+- **Root cause:** `mcp_tools.py` called action tools (`approve_leave_request`) even when no `leave_id` was extractable from query string (e.g. "Approve leave for Dinesh" has no integer). Tool returned error; LLM confused.
+- **Fixed:** Skip action tools when no leave_id/comp_off_id extracted. Fall back to listing tools only (`get_pending_approvals`). LLM shows table and instructs manager to use `Approve leave #<ID>`.
+
+### Chat Scroll Jump (scroll to top then back on query submit)
+- **Root cause:** `useEffect([messages, loading])` fires `scrollIntoView` immediately. Simultaneously, textarea `height = "auto"` resets causing layout reflow → browser jumps viewport to top → smooth scroll then catches up.
+- **Fixed:** Wrap `scrollIntoView` in `requestAnimationFrame` — defers until after browser paints layout, eliminating the jump.
+
+### Edge Case Test Results (15/15 pass)
+Covered: insufficient balance, weekend-only range, backdate limit, invalid date range, half-day multi-day, overlap detection, half-day 0.5 count, Thu-Mon = 3 working days, double-approve blocked, non-manager cannot approve, approval deducts balance, CompOff invalid days rejected, CompOff approve credits balance, CompOff reject doesn't credit, CompOff double-approve blocked.
+
+---
+
+## 13. Attendance Regularization & WFH Module (Session 2026-04-17)
+
+### Architecture
+
+**4 new models in `apps/attendance/`:**
+- `AttendancePolicy` — versioned rules (window days, WFH lead time, penalty order). HR creates new version; engine always reads `is_active=True`.
+- `RegularizationRequest` — employee submits for a past date; requires `requested_check_out`; max 3 attempts per date.
+- `WFHRequest` — employee applies for WFH for list of dates or date range (expanded to working days). Min 1 day prior.
+- `AttendancePenalty` — immutable audit ledger. One row per penalty slice (PL or LOP) per anomaly date.
+
+**`AttendanceLog` additions:** `STATUS_REGULARIZED`, `STATUS_ON_LEAVE`, `STATUS_WFH_PENDING`. FK to `RegularizationRequest`.
+
+### Business Rules (hardened)
+- `AttendanceLog` auto-created daily at midnight by `create_daily_attendance_logs` Beat task. Status: `ABSENT` or `ON_LEAVE` (if approved leave covers the day).
+- Regularization window: 3 working days (configurable in `AttendancePolicy`).
+- PENDING regularization = penalty freeze — penalty scanner skips days with active request.
+- PENDING/APPROVED WFH = penalty freeze for those dates.
+- WFH approval → auto-creates/updates `AttendanceLog(status=WFH)` for each date.
+- WFH rejection → reverts `WFH_PENDING` logs back to `ABSENT`.
+- Penalty: PL first, remainder LOP (split proportionally). Configurable via `penalty_order` in policy.
+- Payroll lock: last working day of month → `AttendancePenalty.payroll_locked=True`. Post-lock reversals are flagged but still processed (LOP stays; PL can be credited back).
+- HR can waive any penalty (no balance restore — used for LOP/HR override). Manager can reverse.
+- Manager can regularize on behalf of employee (reverses penalty if any ACTIVE+unlocked).
+
+### Strategy Pattern — Penalty
+`PenaltyStrategyFactory.get(policy.penalty_order)` → `PLThenLOPStrategy` (default) or `LOPOnlyStrategy`. Register new strategies without modifying factory — OCP.
+
+### Celery Tasks (all in `tasks/attendance_tasks.py`)
+| Task | Schedule | Purpose |
+|------|----------|---------|
+| `create_daily_attendance_logs` | 00:05 daily | Creates `ABSENT`/`ON_LEAVE` log for all active employees |
+| `scan_attendance_anomalies` | 01:00 daily | Finds overdue ABSENT logs → applies penalty |
+| `notify_prepayroll_penalties` | 09:00 on 25th | HR alert: employees with active penalties before payroll |
+| `dispatch_regularization_notification` | On signal | Manager notified on new request; employee notified on decision |
+| `dispatch_wfh_notification` | On signal | Manager notified on WFH request; employee on decision |
+
+### APIs
+```
+GET/POST  /api/attendance/regularization/
+GET/DELETE /api/attendance/regularization/{id}/
+POST      /api/attendance/regularization/{id}/approve/
+POST      /api/attendance/regularization/{id}/reject/
+
+GET/POST  /api/attendance/wfh/
+GET/DELETE /api/attendance/wfh/{id}/
+POST      /api/attendance/wfh/{id}/approve/
+POST      /api/attendance/wfh/{id}/reject/
+
+GET       /api/attendance/penalties/
+POST      /api/attendance/penalties/{id}/reverse/
+POST      /api/attendance/penalties/{id}/waive/
+
+GET/POST  /api/attendance/policy/
+GET       /api/attendance/policy/history/
+```
+
+### Chat Intents
+`regularize_attendance`, `approve_regularization`, `show_regularizations`, `apply_wfh`, `approve_wfh`, `show_wfh_requests`, `show_penalties` — all wired in router, graph, mcp_tools, llm_generate, intent_registry.
+
+### MCP Tools (`mcp/tools/attendance_regularization_tools.py`)
+`create_regularization_request`, `get_regularization_requests`, `approve_regularization_request`, `reject_regularization_request`, `create_wfh_request`, `get_wfh_requests`, `approve_wfh_request`, `reject_wfh_request`, `get_attendance_penalties`, `waive_attendance_penalty`
+
+### Key Edge Cases Handled
+- WFH + regularization cannot coexist for same date — blocked at service layer.
+- WFH for weekend dates → rejected.
+- Regularization for future date → rejected.
+- Regularization for approved-leave date → rejected.
+- PENDING regularization freezes penalty for that date.
+- Manager applies regularization on behalf → penalty reversed automatically.
+- Post-payroll penalty reversal → flagged via `payroll_locked=True` (PL credit still applied; LOP flagged for next cycle).
+- Max 3 regularization attempts per date — 4th blocked.
+- WFH min lead time enforced via `AttendancePolicy.wfh_min_lead_days`.

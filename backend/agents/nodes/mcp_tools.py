@@ -22,6 +22,14 @@ _TOOLS_BY_INTENT: dict[str, list[str]] = {
     "comp_off_approve": ["get_pending_approvals", "approve_comp_off", "reject_comp_off"],
     # Re-notify
     "renotify_manager": ["renotify_manager", "get_leave_history"],
+    # Attendance regularization & WFH
+    "regularize_attendance": ["create_regularization_request", "get_regularization_requests", "get_attendance_anomalies"],
+    "approve_regularization": ["get_regularization_requests", "approve_regularization_request", "reject_regularization_request"],
+    "show_regularizations": ["get_regularization_requests"],
+    "apply_wfh": ["create_wfh_request", "get_wfh_requests"],
+    "approve_wfh": ["get_wfh_requests", "approve_wfh_request", "reject_wfh_request"],
+    "show_wfh_requests": ["get_wfh_requests"],
+    "show_penalties": ["get_attendance_penalties", "waive_attendance_penalty"],
     # Other intents
     "burnout_check": ["get_attendance_summary", "get_attendance_anomalies"],
     "review_summary": ["get_employee_goals", "get_review_cycles"],
@@ -624,6 +632,22 @@ def _parse_action_intent_input(state: AgentState, intent: str) -> dict:
         # Store all IDs for bulk operations (approve 14 and 15)
         if len(all_ids) > 1:
             result["leave_ids"] = all_ids
+    elif intent in ("approve_regularization",):
+        if extracted_id and not result.get("regularization_id"):
+            result["regularization_id"] = extracted_id
+        if "reject" in q_lower:
+            result["action"] = "reject"
+        else:
+            result["action"] = "approve"
+    elif intent in ("approve_wfh",):
+        if extracted_id and not result.get("wfh_id"):
+            result["wfh_id"] = extracted_id
+        if "reject" in q_lower:
+            result["action"] = "reject"
+        else:
+            result["action"] = "approve"
+    elif intent in ("show_penalties",) and extracted_id:
+        result["penalty_id"] = extracted_id
     elif intent == "comp_off_approve":
         if extracted_id and not result.get("comp_off_id"):
             result["comp_off_id"] = extracted_id
@@ -649,7 +673,9 @@ def _parse_action_intent_input(state: AgentState, intent: str) -> dict:
     # If regex already gave us what we need, skip the LLM call entirely
     has_needed = (
         (intent in ("approve_leave", "reject_leave", "cancel_leave", "renotify_manager") and result.get("leave_id")) or
-        (intent == "comp_off_approve" and result.get("comp_off_id"))
+        (intent == "comp_off_approve" and result.get("comp_off_id")) or
+        (intent == "approve_regularization" and result.get("regularization_id")) or
+        (intent == "approve_wfh" and result.get("wfh_id"))
     )
     if has_needed:
         logger.info("action_intent regex parse intent=%s result=%s", intent, result)
@@ -675,6 +701,11 @@ def _parse_action_intent_input(state: AgentState, intent: str) -> dict:
             '{"worked_on": "YYYY-MM-DD", "days_claimed": <float 0.5-2.0>, "reason": "<string>"}'
         ),
         "comp_off_approve": '{"comp_off_id": <int or null>, "rejection_reason": "<string or empty>", "action": "approve" or "reject"}',
+        "regularize_attendance": '{"date": "YYYY-MM-DD", "requested_check_out": "HH:MM", "requested_check_in": "HH:MM or null", "reason": "<string>"}',
+        "approve_regularization": '{"regularization_id": <int or null>, "rejection_reason": "<string>", "action": "approve" or "reject"}',
+        "apply_wfh": '{"dates": ["YYYY-MM-DD", ...], "from_date": "YYYY-MM-DD or null", "to_date": "YYYY-MM-DD or null", "reason": "<string>"}',
+        "approve_wfh": '{"wfh_id": <int or null>, "rejection_reason": "<string>", "action": "approve" or "reject"}',
+        "show_penalties": '{"status": "ACTIVE or REVERSED or WAIVED or null", "penalty_id": <int or null>}',
     }
     schema = intent_schemas.get(intent, "{}")
     today = datetime.date.today().isoformat()
@@ -729,6 +760,7 @@ def _resolve_employee_by_name(name: str, *, manager_employee_id: int, requester_
 def run(state: AgentState) -> AgentState:
     try:
         import mcp.tools.attendance_tools
+        import mcp.tools.attendance_regularization_tools
         import mcp.tools.employee_tools
         import mcp.tools.leave_tools
         import mcp.tools.performance_tools
@@ -794,7 +826,9 @@ def run(state: AgentState) -> AgentState:
                     on_behalf_of, resolved_id,
                 )
     elif intent in ("approve_leave", "reject_leave", "cancel_leave",
-                    "comp_off_request", "comp_off_approve", "renotify_manager"):
+                    "comp_off_request", "comp_off_approve", "renotify_manager",
+                    "approve_regularization", "approve_wfh",
+                    "regularize_attendance", "apply_wfh", "show_penalties"):
         tool_names = _TOOLS_BY_INTENT.get(intent, [])
         apply_input = _parse_action_intent_input(state, intent)
     else:
@@ -874,6 +908,15 @@ def run(state: AgentState) -> AgentState:
             # No comp_off_id extracted — only fetch pending approvals
             call_specs = [{"tool_name": n, "input_data": apply_input} for n in tool_names if n not in (
                 "approve_comp_off", "reject_comp_off"
+            )]
+        elif intent == "approve_regularization" and not apply_input.get("regularization_id"):
+            # No ID — fetch list so LLM can show pending requests
+            call_specs = [{"tool_name": n, "input_data": apply_input} for n in tool_names if n not in (
+                "approve_regularization_request", "reject_regularization_request"
+            )]
+        elif intent == "approve_wfh" and not apply_input.get("wfh_id"):
+            call_specs = [{"tool_name": n, "input_data": apply_input} for n in tool_names if n not in (
+                "approve_wfh_request", "reject_wfh_request"
             )]
         else:
             call_specs = [{"tool_name": n, "input_data": apply_input} for n in tool_names]

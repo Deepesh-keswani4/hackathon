@@ -115,6 +115,17 @@ def _get_flow(intent: str) -> list[str]:
         "renotify_manager",
     ):
         return _LEAVE_ACTION_FLOW
+    # Attendance module intents — MCP tools + LLM synthesis (no SPOF/conflict needed)
+    if intent in (
+        "regularize_attendance",
+        "approve_regularization",
+        "show_regularizations",
+        "apply_wfh",
+        "approve_wfh",
+        "show_wfh_requests",
+        "show_penalties",
+    ):
+        return _LEAVE_ACTION_FLOW
     return _NL_FLOW
 
 

@@ -41,6 +41,7 @@ interface Message {
   isNotification?: boolean;
   notificationId?: number;
   ctas?: NotificationCTA[];
+  notifMetadata?: Record<string, unknown>;
 }
 
 interface CollectionState {
@@ -143,25 +144,48 @@ function getContextSuggestions(lastReply: string): string[] {
 function buildCTAs(metadata: Record<string, unknown>): NotificationCTA[] {
   const ctas: NotificationCTA[] = [];
   const leaveId = metadata?.leave_id;
-  const empName = metadata?.employee_name as string | undefined;
   const compOffId = metadata?.comp_off_id;
+  const regularizationId = metadata?.regularization_id;
+  const wfhId = metadata?.wfh_id;
+  const status = metadata?.status as string | undefined;
+  const actionRequired = metadata?.action_required;
 
-  if (metadata?.action_required) {
+  // ── Manager action CTAs ──────────────────────────────────────────────────
+  if (actionRequired) {
     if (leaveId) {
-      // Always include leave_id in the action so the AI parser can extract it reliably
-      ctas.push({ label: "Approve", action: `Approve leave #${leaveId}`, style: "primary" });
-      ctas.push({ label: "Reject", action: `Reject leave #${leaveId}`, style: "danger" });
+      ctas.push({ label: "✓ Approve", action: `Approve leave #${leaveId}`, style: "primary" });
+      ctas.push({ label: "✗ Reject", action: `Reject leave #${leaveId}`, style: "danger" });
     }
     if (compOffId) {
-      ctas.push({ label: "Approve Comp Off", action: `Approve comp off #${compOffId}`, style: "primary" });
-      ctas.push({ label: "Reject", action: `Reject comp off #${compOffId}`, style: "danger" });
+      ctas.push({ label: "✓ Approve Comp Off", action: `Approve comp off #${compOffId}`, style: "primary" });
+      ctas.push({ label: "✗ Reject", action: `Reject comp off #${compOffId}`, style: "danger" });
+    }
+    if (regularizationId) {
+      ctas.push({ label: "✓ Approve", action: `Approve regularization #${regularizationId}`, style: "primary" });
+      ctas.push({ label: "✗ Reject", action: `Reject regularization #${regularizationId}`, style: "danger" });
+    }
+    if (wfhId) {
+      ctas.push({ label: "✓ Approve WFH", action: `Approve WFH #${wfhId}`, style: "primary" });
+      ctas.push({ label: "✗ Reject", action: `Reject WFH #${wfhId}`, style: "danger" });
     }
   }
-  if (leaveId && !metadata?.action_required) {
-    ctas.push({ label: "View my leaves", action: "Show my leave history", style: "primary" });
-    // Employee-facing: allow re-notifying manager if leave is pending
-    if (metadata?.status === "PENDING" || (!metadata?.status && metadata?.action_required === undefined)) {
-      ctas.push({ label: "Remind manager", action: `__renotify_leave_${leaveId}`, style: "primary" });
+
+  // ── Employee-facing status CTAs ──────────────────────────────────────────
+  if (!actionRequired) {
+    if (leaveId) {
+      ctas.push({ label: "View leaves", action: "Show my leave history", style: "primary" });
+      if (!status || status === "PENDING") {
+        ctas.push({ label: "Remind manager", action: `__renotify_leave_${leaveId}`, style: "primary" });
+      }
+    }
+    if (regularizationId) {
+      ctas.push({ label: "View regularizations", action: "Show my regularization requests", style: "primary" });
+    }
+    if (wfhId) {
+      ctas.push({ label: "View WFH requests", action: "Show my WFH requests", style: "primary" });
+    }
+    if (compOffId && status === "APPROVED") {
+      ctas.push({ label: "View comp off balance", action: "What is my comp off balance?", style: "primary" });
     }
   }
   return ctas;
@@ -177,14 +201,14 @@ interface ChartSpec {
   yKeys: string[];
 }
 
-const CHART_COLORS = ["#E8622A", "#2C1810", "#8B6147", "#F59E4A", "#B8977E", "#6B4F3A"];
+const CHART_COLORS = ["#E8D44D", "#111111", "#34D399", "#F87171", "#60A5FA", "#A78BFA"];
 
 function ChartBlock({ spec }: { spec: ChartSpec }) {
   const { type, title, data, xKey, yKeys } = spec;
   return (
     <div className="my-3">
       {title && (
-        <p className="text-xs font-semibold mb-2" style={{ color: "#2C1810" }}>{title}</p>
+        <p className="text-xs font-semibold mb-2 text-[#111111]">{title}</p>
       )}
       <ResponsiveContainer width="100%" height={240}>
         {type === "pie" ? (
@@ -199,7 +223,7 @@ function ChartBlock({ spec }: { spec: ChartSpec }) {
           </PieChart>
         ) : type === "line" ? (
           <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#F0E4D8" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#F0EEEA" />
             <XAxis dataKey={xKey} tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip />
@@ -210,7 +234,7 @@ function ChartBlock({ spec }: { spec: ChartSpec }) {
           </LineChart>
         ) : type === "area" ? (
           <AreaChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#F0E4D8" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#F0EEEA" />
             <XAxis dataKey={xKey} tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip />
@@ -221,7 +245,7 @@ function ChartBlock({ spec }: { spec: ChartSpec }) {
           </AreaChart>
         ) : (
           <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#F0E4D8" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#F0EEEA" />
             <XAxis dataKey={xKey} tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip />
@@ -295,25 +319,25 @@ const MD_COMPONENTS = {
   ),
   th: ({ children }: { children?: React.ReactNode }) => (
     <th className="text-left px-3 py-2 text-xs font-semibold whitespace-nowrap"
-      style={{ background: "#F5EDE4", borderBottom: "1px solid #E8D9CC", color: "#2C1810" }}>
+      style={{ background: "#F5F5F0", borderBottom: "1px solid #E8E5E0", color: "#111111" }}>
       {children}
     </th>
   ),
   td: ({ children }: { children?: React.ReactNode }) => (
     <td className="px-3 py-2 text-xs align-top"
-      style={{ borderBottom: "1px solid #F0E4D8", color: "#3D2010" }}>
+      style={{ borderBottom: "1px solid #F0EEEA", color: "#333333" }}>
       {children}
     </td>
   ),
   tr: ({ children }: { children?: React.ReactNode }) => (
-    <tr className="hover:bg-orange-50 transition-colors">{children}</tr>
+    <tr className="hover:bg-[#F8F7F3] transition-colors">{children}</tr>
   ),
 };
 
 function AssistantContent({ content }: { content: string }) {
   const parts = parseMessageParts(content);
   return (
-    <div className="prose prose-sm max-w-none overflow-x-auto" style={{ color: "#1C0F07" }}>
+    <div className="prose prose-sm max-w-none overflow-x-auto" style={{ color: "#111111" }}>
       {parts.map((part, i) =>
         part.kind === "chart" ? (
           <ChartBlock key={i} spec={part.spec} />
@@ -472,7 +496,12 @@ function groupSessions(sessions: SessionMeta[]): { label: string; items: Session
   return Object.entries(groups).map(([label, items]) => ({ label, items }));
 }
 
-export default function ChatPage() {
+interface ChatPageProps {
+  embedded?: boolean;
+  onNav?: (page: string) => void;
+}
+
+export default function ChatPage({ embedded, onNav }: ChatPageProps = {}) {
   const navigate = useNavigate();
 
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
@@ -485,6 +514,7 @@ export default function ChatPage() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sessionsPanelOpen, setSessionsPanelOpen] = useState(false);
   const [quote, setQuote] = useState(getRandomQuote);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -550,6 +580,7 @@ export default function ChatPage() {
             isNotification: true,
             notificationId: data.id,
             ctas,
+            notifMetadata: data.metadata || {},
           };
           // Deduplicate: skip if this notification ID is already shown as a bubble
           setMessages((prev) => {
@@ -637,6 +668,7 @@ export default function ChatPage() {
           isNotification: true,
           notificationId: n.id,
           ctas: buildCTAs(n.metadata),
+          notifMetadata: n.metadata || {},
         })),
       ]);
     } catch {
@@ -786,45 +818,37 @@ export default function ChatPage() {
   const grouped = groupSessions(sessions);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "#FBF4ED" }}>
+    <div
+      className={`flex overflow-hidden ${embedded ? "h-full" : "h-screen"}`}
+      style={{ background: "#EDECEA" }}
+    >
+      {/* no blobs — Crextio is clean flat */}
+      <div className="hidden" />
 
       {/* ── Sidebar ─────────────────────────────────────────────────────────── */}
       <aside
-        className="flex flex-col flex-shrink-0 transition-all duration-200 overflow-hidden"
+        className="flex flex-col flex-shrink-0 transition-all duration-300 overflow-hidden relative z-20"
         style={{
-          width: sidebarOpen ? "260px" : "0px",
-          background: "#1C0F07",
+          width: embedded ? "0px" : sidebarOpen ? "260px" : "0px",
+          background: "#111111",
+          borderRight: "1px solid rgba(255,255,255,0.06)",
         }}
       >
         {/* Brand */}
         <div className="flex-shrink-0 px-4 pt-5 pb-3">
           <div className="flex items-center gap-2.5 mb-4">
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-              style={{ background: "#E8622A" }}
-            >
-              HE
+            <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-white text-xs font-black flex-shrink-0 border border-white/10">
+              ✦
             </div>
-            <span className="text-white text-sm font-semibold tracking-tight truncate">
-              Human Edge
+            <span className="text-white text-sm font-bold tracking-tight truncate">
+              AI Assistant
             </span>
           </div>
 
           {/* New chat button */}
           <button
             onClick={startNewChat}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background: "rgba(232,98,42,0.15)",
-              color: "#E8622A",
-              border: "1px solid rgba(232,98,42,0.3)",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "rgba(232,98,42,0.25)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "rgba(232,98,42,0.15)";
-            }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all bg-white/10 text-white/70 border border-white/10 hover:bg-white/15 hover:text-white"
           >
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -834,18 +858,13 @@ export default function ChatPage() {
         </div>
 
         {/* Session list */}
-        <div className="flex-1 overflow-y-auto px-2 pb-2 scrollbar-thin">
+        <div className="flex-1 overflow-y-auto px-2 pb-2">
           {grouped.length === 0 ? (
-            <p className="text-xs px-3 py-3" style={{ color: "#6B4F3A" }}>
-              No previous chats
-            </p>
+            <p className="text-xs px-3 py-3 text-white/30">No previous chats</p>
           ) : (
             grouped.map(({ label, items }) => (
               <div key={label} className="mb-3">
-                <p
-                  className="text-[10px] font-semibold uppercase tracking-wider px-3 py-1"
-                  style={{ color: "#6B4F3A" }}
-                >
+                <p className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 text-white/25">
                   {label}
                 </p>
                 {items.map((s) => {
@@ -854,25 +873,11 @@ export default function ChatPage() {
                     <button
                       key={s.session_id}
                       onClick={() => loadSession(s)}
-                      className="w-full text-left px-3 py-2 rounded-lg text-xs transition-all mb-0.5 truncate"
-                      style={{
-                        background: isActive ? "rgba(232,98,42,0.2)" : "transparent",
-                        color: isActive ? "#E8622A" : "#C4A99A",
-                        borderLeft: isActive ? "2px solid #E8622A" : "2px solid transparent",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isActive) {
-                          (e.currentTarget as HTMLButtonElement).style.background =
-                            "rgba(255,255,255,0.05)";
-                          (e.currentTarget as HTMLButtonElement).style.color = "#E8D5C8";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isActive) {
-                          (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                          (e.currentTarget as HTMLButtonElement).style.color = "#C4A99A";
-                        }
-                      }}
+                      className={`w-full text-left px-3 py-2 rounded-xl text-xs transition-all mb-0.5 truncate
+                        ${isActive
+                          ? "bg-white/15 text-white border-l-2 border-white/40"
+                          : "text-white/40 hover:bg-white/8 hover:text-white/70 border-l-2 border-transparent"
+                        }`}
                       title={sessionDisplayTitle(s)}
                     >
                       {sessionDisplayTitle(s)}
@@ -885,22 +890,10 @@ export default function ChatPage() {
         </div>
 
         {/* Sign out */}
-        <div
-          className="flex-shrink-0 p-3"
-          style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}
-        >
+        <div className="flex-shrink-0 p-3 border-t border-white/8">
           <button
             onClick={() => { clearTokens(); navigate("/"); }}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all"
-            style={{ color: "#6B4F3A" }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.color = "#E8622A";
-              (e.currentTarget as HTMLButtonElement).style.background = "rgba(232,98,42,0.08)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.color = "#6B4F3A";
-              (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-            }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs transition-all text-white/30 hover:text-white/60 hover:bg-white/8"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round"
@@ -912,58 +905,46 @@ export default function ChatPage() {
       </aside>
 
       {/* ── Main ────────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="flex flex-col flex-1 min-w-0 relative z-10">
 
         {/* Top bar */}
         <header
           className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
-          style={{ background: "#FBF4ED", borderBottom: "1px solid #E8D9CC" }}
+          style={{ background: "#EDECEA", borderBottom: "1px solid rgba(0,0,0,0.06)" }}
         >
-          {/* Sidebar toggle */}
-          <button
-            onClick={() => setSidebarOpen((v) => !v)}
-            className="p-1.5 rounded-lg transition-colors flex-shrink-0"
-            style={{ color: "#8B6147" }}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "#EDE3D9")}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "transparent")}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
+          {/* Sidebar toggle — hide when embedded (sidebar already = 0 width) */}
+          {!embedded && (
+            <button
+              onClick={() => setSidebarOpen((v) => !v)}
+              className="w-8 h-8 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] flex items-center justify-center text-gray-500 hover:text-gray-700 transition-all flex-shrink-0"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          )}
 
           {/* Brand logo */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-bold"
-              style={{ background: "#E8622A" }}
-            >
-              HE
+            <div className="w-7 h-7 rounded-xl bg-[#111111] flex items-center justify-center text-[#E8D44D] text-[10px] font-black">
+              ✦
             </div>
-            <span className="text-sm font-semibold tracking-tight" style={{ color: "#2C1810" }}>
-              Human Edge
-            </span>
+            <span className="text-sm font-bold tracking-tight text-[#111111]">AI Assistant</span>
           </div>
 
           <div className="flex-1" />
 
-          {/* Notification bell — click to re-surface unread notifications */}
+          {/* Notification bell */}
           <button
             onClick={renotify}
-            className="relative flex-shrink-0 p-1.5 rounded-lg transition-colors"
+            className="relative flex-shrink-0 w-8 h-8 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] flex items-center justify-center text-gray-500 hover:text-gray-700 transition-all"
             title="Show unread notifications"
-            style={{ color: "#8B6147" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#EDE3D9"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
             {unreadCount > 0 && (
-              <span
-                className="absolute top-0 right-0 w-4 h-4 rounded-full text-white text-[9px] font-bold flex items-center justify-center"
-                style={{ background: "#E8622A" }}
-              >
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
             )}
@@ -973,10 +954,8 @@ export default function ChatPage() {
           <div className="flex items-center gap-3 flex-shrink-0">
             {/* Live time */}
             <div className="text-right hidden sm:block">
-              <p className="text-xs font-semibold tabular-nums" style={{ color: "#2C1810" }}>
-                {time}
-              </p>
-              <p className="text-[10px]" style={{ color: "#B8977E" }}>
+              <p className="text-xs font-bold tabular-nums text-gray-900">{time}</p>
+              <p className="text-[10px] text-gray-400">
                 {new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
               </p>
             </div>
@@ -984,95 +963,51 @@ export default function ChatPage() {
             {/* User initials circle */}
             {userProfile ? (
               <div className="relative group cursor-default">
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                  style={{ background: "#2C1810" }}
-                >
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-pink-400 to-orange-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                   {getInitials(userProfile.name)}
                 </div>
                 {/* Tooltip */}
-                <div
-                  className="absolute right-0 top-10 w-44 rounded-xl p-3 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10"
-                  style={{
-                    background: "#FFFFFF",
-                    border: "1px solid #E8D9CC",
-                    boxShadow: "0 4px 16px rgba(44,24,16,0.12)",
-                  }}
-                >
-                  <p className="text-xs font-semibold truncate" style={{ color: "#2C1810" }}>
-                    {userProfile.name}
-                  </p>
-                  <p className="text-[10px] truncate mt-0.5" style={{ color: "#8B6147" }}>
-                    {userProfile.title || userProfile.role}
-                  </p>
+                <div className="absolute right-0 top-10 w-44 rounded-2xl p-3 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10 bg-white/90 backdrop-blur-xl border border-white/80 shadow-xl">
+                  <p className="text-xs font-bold text-gray-900 truncate">{userProfile.name}</p>
+                  <p className="text-[10px] truncate mt-0.5 text-gray-500">{userProfile.title || userProfile.role}</p>
                   {userProfile.department && (
-                    <p className="text-[10px] truncate" style={{ color: "#B8977E" }}>
-                      {userProfile.department.name}
-                    </p>
+                    <p className="text-[10px] truncate text-gray-400">{userProfile.department.name}</p>
                   )}
                 </div>
               </div>
             ) : (
-              <div
-                className="w-8 h-8 rounded-full flex-shrink-0"
-                style={{ background: "#E8D9CC" }}
-              />
+              <div className="w-8 h-8 rounded-xl bg-gray-200 flex-shrink-0" />
             )}
           </div>
         </header>
 
         {/* Loading history */}
         {loadingHistory && (
-          <div
-            className="px-4 py-2 text-center text-xs flex-shrink-0"
-            style={{ background: "#FDF0E6", color: "#E8622A", borderBottom: "1px solid #F2DECE" }}
-          >
+          <div className="px-4 py-2 text-center text-xs flex-shrink-0 text-purple-600 bg-purple-50/60 border-b border-purple-100">
             Loading messages…
           </div>
         )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-6">
-          <div className="max-w-2xl mx-auto space-y-5">
+          <div className="max-w-2xl mx-auto space-y-4">
 
             {/* New chat welcome — quote + suggestions */}
             {messages.length === 1 && !loading && (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-base mb-6"
-                  style={{ background: "#E8622A" }}
-                >
-                  HE
+                <div className="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-[#E8D44D] font-black text-xl mb-6 shadow-[0_4px_16px_rgba(0,0,0,0.15)]">
+                  ✦
                 </div>
-                <p
-                  className="text-lg font-semibold max-w-md leading-snug mb-2"
-                  style={{ color: "#2C1810" }}
-                >
+                <p className="text-base font-semibold max-w-md leading-snug mb-2 text-[#111111]">
                   "{quote}"
                 </p>
-                <p className="text-xs mb-8" style={{ color: "#B8977E" }}>
-                  How can I help you today?
-                </p>
+                <p className="text-sm mb-8 text-gray-400">How can I help you today?</p>
                 <div className="flex flex-wrap gap-2 justify-center">
                   {DEFAULT_SUGGESTIONS.map((s) => (
                     <button
                       key={s}
                       onClick={() => submit(s)}
-                      className="text-xs rounded-full px-3 py-1.5 transition-all"
-                      style={{
-                        background: "#FFFFFF",
-                        color: "#8B6147",
-                        border: "1px solid #E8D9CC",
-                        boxShadow: "0 1px 2px rgba(44,24,16,0.06)",
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.borderColor = "#E8622A";
-                        (e.currentTarget as HTMLButtonElement).style.color = "#E8622A";
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.borderColor = "#E8D9CC";
-                        (e.currentTarget as HTMLButtonElement).style.color = "#8B6147";
-                      }}
+                      className="text-xs rounded-full px-4 py-2 transition-all bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] text-gray-600 hover:bg-[#E8D44D] hover:text-[#111111] hover:shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
                     >
                       {s}
                     </button>
@@ -1085,33 +1020,36 @@ export default function ChatPage() {
               msg.id === 0 ? null : msg.isNotification ? (
                 /* ── Notification bubble ── */
                 <div key={msg.id} className="flex justify-start">
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center mr-2.5 mt-0.5 flex-shrink-0 text-white text-[9px] font-bold"
-                    style={{ background: "#E8622A" }}
-                  >
+                  <div className="w-7 h-7 rounded-xl bg-[#E8D44D] flex items-center justify-center mr-2.5 mt-0.5 flex-shrink-0 text-[#111111] text-sm font-bold">
                     🔔
                   </div>
                   <div
-                    className="max-w-[82%] rounded-2xl px-4 py-3 text-sm"
-                    style={{
-                      background: "#FEF5EE",
-                      border: "1px solid #F2DECE",
-                      borderRadius: "4px 18px 18px 18px",
-                      boxShadow: "0 1px 3px rgba(232,98,42,0.1)",
-                    }}
+                    className="max-w-[82%] px-4 py-3 text-sm bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] cursor-pointer"
+                    style={{ borderRadius: "4px 16px 16px 16px" }}
                     onClick={() => msg.notificationId && markNotificationRead(msg.notificationId)}
                   >
-                    <div className="prose prose-sm max-w-none" style={{ color: "#1C0F07" }}>
+                    <div className="prose prose-sm max-w-none text-gray-900">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                     </div>
+                    {msg.notifMetadata?.actioned_by_name && (
+                      <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+                        <span className="w-5 h-5 rounded-full bg-[#E8D44D] flex items-center justify-center text-[#111111] text-[9px] font-bold flex-shrink-0">
+                          {String(msg.notifMetadata.actioned_by_name).slice(0, 1).toUpperCase()}
+                        </span>
+                        <span>
+                          {msg.notifMetadata.status === "APPROVED" || msg.notifMetadata.status === "approved"
+                            ? "Approved"
+                            : "Rejected"} by <span className="font-semibold text-gray-700">{String(msg.notifMetadata.actioned_by_name)}</span>
+                        </span>
+                      </div>
+                    )}
                     {msg.ctas && msg.ctas.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-3 pt-3" style={{ borderTop: "1px solid #F2DECE" }}>
+                      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
                         {msg.ctas.map((cta) => (
                           <button
                             key={cta.label}
                             onClick={() => {
                               if (msg.notificationId) markNotificationRead(msg.notificationId);
-                              // Intercept renotify actions — call REST directly instead of chat
                               const renotifyMatch = cta.action.match(/^__renotify_leave_(\d+)$/);
                               if (renotifyMatch) {
                                 handleRenotifyLeave(parseInt(renotifyMatch[1], 10));
@@ -1119,26 +1057,11 @@ export default function ChatPage() {
                               }
                               submit(cta.action);
                             }}
-                            className="text-xs font-semibold px-4 py-1.5 rounded-lg transition-all"
-                            style={
+                            className={`text-xs font-semibold px-4 py-1.5 rounded-full transition-all ${
                               cta.style === "danger"
-                                ? { background: "#FEE2E2", color: "#991B1B", border: "1px solid #FCA5A5" }
-                                : { background: "#E8622A", color: "#FFFFFF" }
-                            }
-                            onMouseEnter={(e) => {
-                              if (cta.style === "danger") {
-                                (e.currentTarget as HTMLButtonElement).style.background = "#FECACA";
-                              } else {
-                                (e.currentTarget as HTMLButtonElement).style.background = "#C94E1E";
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (cta.style === "danger") {
-                                (e.currentTarget as HTMLButtonElement).style.background = "#FEE2E2";
-                              } else {
-                                (e.currentTarget as HTMLButtonElement).style.background = "#E8622A";
-                              }
-                            }}
+                                ? "bg-red-100 text-red-700 hover:bg-red-200"
+                                : "bg-[#111111] text-white hover:bg-gray-800"
+                            }`}
                           >
                             {cta.label}
                           </button>
@@ -1146,14 +1069,10 @@ export default function ChatPage() {
                         {msg.notificationId && (
                           <button
                             onClick={() => {
-                              /* dismiss — mark read, remove from view */
                               markNotificationRead(msg.notificationId!);
                               setMessages((prev) => prev.filter((m) => m.id !== msg.id));
                             }}
-                            className="text-xs px-3 py-1.5 rounded-lg transition-all"
-                            style={{ background: "transparent", color: "#8B6147", border: "1px solid #E8D9CC" }}
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#F5EDE4"; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                            className="text-xs px-3 py-1.5 rounded-full transition-all text-gray-400 hover:bg-gray-100"
                           >
                             Dismiss
                           </button>
@@ -1168,37 +1087,21 @@ export default function ChatPage() {
                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 {msg.role === "assistant" && (
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center mr-2.5 mt-0.5 flex-shrink-0 text-white text-[9px] font-bold"
-                    style={{ background: "#E8622A" }}
-                  >
-                    HE
+                  <div className="w-7 h-7 rounded-xl bg-[#111111] flex items-center justify-center mr-2.5 mt-0.5 flex-shrink-0 text-[#E8D44D] text-[10px] font-black">
+                    ✦
                   </div>
                 )}
                 <div
-                  className="max-w-[82%] rounded-2xl px-4 py-3 text-sm"
-                  style={
+                  className={`max-w-[82%] px-4 py-3 text-sm ${
                     msg.role === "user"
-                      ? {
-                          background: "#2C1810",
-                          color: "#FBF4ED",
-                          borderRadius: "18px 18px 4px 18px",
-                        }
+                      ? "bg-[#111111] text-white"
                       : msg.error
-                      ? {
-                          background: "#FEF2F2",
-                          color: "#1C0F07",
-                          border: "1px solid #FCA5A5",
-                          borderRadius: "4px 18px 18px 18px",
-                        }
-                      : {
-                          background: "#FFFFFF",
-                          color: "#1C0F07",
-                          border: "1px solid #E8D9CC",
-                          borderRadius: "4px 18px 18px 18px",
-                          boxShadow: "0 1px 3px rgba(44,24,16,0.06)",
-                        }
-                  }
+                      ? "bg-red-50 text-gray-900 border border-red-100"
+                      : "bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] text-gray-900"
+                  }`}
+                  style={{
+                    borderRadius: msg.role === "user" ? "16px 16px 4px 16px" : "4px 16px 16px 16px",
+                  }}
                 >
                   {msg.role === "user" ? (
                     <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
@@ -1212,34 +1115,14 @@ export default function ChatPage() {
             {/* Typing indicator */}
             {loading && (
               <div className="flex justify-start">
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center mr-2.5 mt-0.5 flex-shrink-0 text-white text-[9px] font-bold"
-                  style={{ background: "#E8622A" }}
-                >
-                  HE
+                <div className="w-7 h-7 rounded-xl bg-[#111111] flex items-center justify-center mr-2.5 mt-0.5 flex-shrink-0 text-[#E8D44D] text-[10px] font-black">
+                  ✦
                 </div>
-                <div
-                  className="rounded-2xl px-4 py-3"
-                  style={{
-                    background: "#FFFFFF",
-                    border: "1px solid #E8D9CC",
-                    borderRadius: "4px 18px 18px 18px",
-                    boxShadow: "0 1px 3px rgba(44,24,16,0.06)",
-                  }}
-                >
+                <div className="px-4 py-3 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)]" style={{ borderRadius: "4px 16px 16px 16px" }}>
                   <div className="flex gap-1 items-center h-4">
-                    <span
-                      className="w-1.5 h-1.5 rounded-full animate-bounce [animation-delay:-0.3s]"
-                      style={{ background: "#E8622A" }}
-                    />
-                    <span
-                      className="w-1.5 h-1.5 rounded-full animate-bounce [animation-delay:-0.15s]"
-                      style={{ background: "#E8622A" }}
-                    />
-                    <span
-                      className="w-1.5 h-1.5 rounded-full animate-bounce"
-                      style={{ background: "#E8622A" }}
-                    />
+                    <span className="w-2 h-2 rounded-full bg-[#E8D44D] animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-2 h-2 rounded-full bg-[#E8D44D] animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-2 h-2 rounded-full bg-[#E8D44D] animate-bounce" />
                   </div>
                 </div>
               </div>
@@ -1250,23 +1133,12 @@ export default function ChatPage() {
         </div>
 
         {/* Input bar */}
-        <div
-          className="px-4 py-4 flex-shrink-0"
-          style={{ background: "#FBF4ED", borderTop: "1px solid #E8D9CC" }}
-        >
+        <div className="px-4 py-4 flex-shrink-0" style={{ background: "#EDECEA", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
           <form
             onSubmit={(e) => { e.preventDefault(); submit(input); }}
             className="max-w-2xl mx-auto"
           >
-            <div
-              className="flex items-end gap-2 px-4 py-3 rounded-2xl transition-all"
-              style={{
-                background: "#FFFFFF",
-                border: "1px solid #E8D9CC",
-                boxShadow: "0 2px 8px rgba(44,24,16,0.08)",
-              }}
-              onFocus={() => {}}
-            >
+            <div className="flex items-end gap-2 px-4 py-3 rounded-2xl transition-all bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.10)]">
               <textarea
                 ref={textareaRef}
                 rows={1}
@@ -1274,28 +1146,19 @@ export default function ChatPage() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask anything — leave, balance, approvals…"
-                className="flex-1 bg-transparent text-sm resize-none outline-none py-0.5 min-h-[22px]"
-                style={{ color: "#1C0F07" }}
+                className="flex-1 bg-transparent text-sm resize-none outline-none py-0.5 min-h-[22px] text-gray-900 placeholder-gray-400"
               />
               <button
                 type="submit"
                 disabled={!input.trim() || loading}
-                className="flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center transition-all mb-0.5 disabled:opacity-40"
-                style={{ background: "#E8622A" }}
-                onMouseEnter={(e) => {
-                  if (!loading && input.trim())
-                    (e.currentTarget as HTMLButtonElement).style.background = "#C94E1E";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.background = "#E8622A";
-                }}
+                className="flex-shrink-0 w-8 h-8 rounded-xl bg-[#111111] flex items-center justify-center transition-all mb-0.5 disabled:opacity-30 hover:bg-gray-800"
               >
                 <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
                 </svg>
               </button>
             </div>
-            <p className="text-center text-[10px] mt-1.5" style={{ color: "#B8977E" }}>
+            <p className="text-center text-[10px] mt-1.5 text-gray-400">
               Enter to send · Shift+Enter for new line
             </p>
           </form>

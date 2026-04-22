@@ -169,6 +169,12 @@ def _notify_employee_rejection(instance: LeaveRequest):
         if not recipient:
             return
 
+        actioned_by_name = (
+            instance.approver.name
+            if instance.approver and hasattr(instance.approver, "name")
+            else None
+        )
+
         dispatch_notification.delay(
             ["inapp"],
             recipient,
@@ -183,6 +189,7 @@ def _notify_employee_rejection(instance: LeaveRequest):
                 "leave_type": instance.leave_type,
                 "status": "REJECTED",
                 "rejection_reason": instance.rejection_reason,
+                "actioned_by_name": actioned_by_name,
             },
         )
         logger.info("Queued rejection notification leave_id=%s recipient=%s", instance.pk, recipient)
@@ -311,6 +318,12 @@ def _notify_employee_comp_off_approved(instance: CompOffRequest):
                 "comp_off_id": instance.pk,
                 "days_claimed": float(instance.days_claimed),
                 "new_co_balance": float(new_balance) if isinstance(new_balance, (int, float)) else None,
+                "actioned_by_name": (
+                    instance.approved_by.name
+                    if instance.approved_by and hasattr(instance.approved_by, "name")
+                    else None
+                ),
+                "status": "APPROVED",
             },
         )
     except Exception as exc:
@@ -340,6 +353,12 @@ def _notify_employee_comp_off_rejected(instance: CompOffRequest):
             {
                 "comp_off_id": instance.pk,
                 "rejection_reason": instance.rejection_reason,
+                "actioned_by_name": (
+                    instance.approved_by.name
+                    if instance.approved_by and hasattr(instance.approved_by, "name")
+                    else None
+                ),
+                "status": "REJECTED",
             },
         )
     except Exception as exc:

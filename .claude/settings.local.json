@@ -25,7 +25,17 @@
       "Bash(ls *)",
       "Bash(psql postgresql://hrms:hrms_secret@127.0.0.1:5432/hrms -c \"SELECT COUNT\\(*\\) FROM employees_user;\")",
       "Bash(psql postgresql://hrms:hrms_secret@127.0.0.1:5432/hrms -c \"SELECT email FROM employees_user WHERE is_superuser=true OR is_staff=true;\")",
-      "Bash(psql *)"
+      "Bash(psql *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.local python *)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.local make -n run)",
+      "Bash(python3.12 *)",
+      "Bash(pip3.12 show *)",
+      "Bash(npm run *)"
     ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true
   }
 }

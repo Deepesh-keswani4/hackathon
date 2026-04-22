@@ -289,6 +289,67 @@ def _get_system_prompt(state: AgentState) -> str:
             "  • For single-employee results, use a structured card: Name | Role | Dept | Manager | Email | Phone.\n"
             "  • For team/dept lists, show a compact table: Name | Title | Department.\n"
         )
+    elif intent == "regularize_attendance":
+        prompt = (
+            "You are an HRMS attendance assistant. The employee wants to regularize their attendance.\n\n"
+            "CRITICAL RULES:\n"
+            "1. If tool_results.create_regularization_request.regularization_request.status == 'PENDING': "
+            "   Confirm request submitted. Show: date, check-in (if provided), check-out, attempt number. "
+            "   Say manager has been notified and will review.\n"
+            "2. If tool_results.create_regularization_request contains 'error': Report failure with the exact error. "
+            "   Explain any limit (e.g. max 3 attempts, date in future, WFH conflict) and suggest what to do.\n"
+            "3. If create_regularization_request key ABSENT: Say technical error, ask user to try again with date and check-out time.\n"
+            "4. If tool_results.attendance_anomalies present: Show anomalies table (date, type) to help user pick which date to regularize.\n"
+            "5. NEVER fabricate success if rule 2 or 3 applies.\n"
+            "6. Remind employee: regularization must be done within the allowed window (default 3 working days) to avoid penalty."
+        )
+    elif intent in ("approve_regularization", "show_regularizations"):
+        prompt = (
+            "You are an HRMS attendance manager assistant.\n\n"
+            "RULES:\n"
+            "1. If tool_results.approve_regularization_request.approved == true: "
+            "   Confirm approval. Show date, employee name. Mention if penalty was reversed (penalty_reversed=true).\n"
+            "2. If tool_results.reject_regularization_request.rejected == true: Confirm rejection.\n"
+            "3. If action tool absent but tool_results.regularization_requests present: "
+            "   Show pending requests table (id, employee, date, check-out, reason, attempt). "
+            "   Tell manager to say 'Approve regularization #<ID>' or 'Reject regularization #<ID>'.\n"
+            "4. NEVER claim approval/rejection happened if the respective tool result is absent.\n"
+            "5. If no pending requests, say team has no pending regularization requests."
+        )
+    elif intent == "apply_wfh":
+        prompt = (
+            "You are an HRMS WFH assistant.\n\n"
+            "RULES:\n"
+            "1. If tool_results.wfh_request.status == 'PENDING': "
+            "   Confirm WFH request submitted. Show dates, count. Say manager notified.\n"
+            "2. If tool_results.create_wfh_request contains 'error': Report failure (e.g. date too soon, weekend date, conflict). Suggest fix.\n"
+            "3. If create_wfh_request key ABSENT: Say technical error, ask user to try again with dates.\n"
+            "4. NEVER fabricate success when rule 2 or 3 applies.\n"
+            "5. Remind: WFH must be applied at least 1 day in advance. No penalty if manager does not respond."
+        )
+    elif intent in ("approve_wfh", "show_wfh_requests"):
+        prompt = (
+            "You are an HRMS WFH manager assistant.\n\n"
+            "RULES:\n"
+            "1. If tool_results.approve_wfh_request.approved == true: Confirm. Show dates approved.\n"
+            "2. If tool_results.reject_wfh_request.rejected == true: Confirm rejection.\n"
+            "3. If action tool absent but tool_results.wfh_requests present: "
+            "   Show pending WFH requests table (id, employee, dates, reason). "
+            "   Tell manager 'Approve WFH #<ID>' or 'Reject WFH #<ID>'.\n"
+            "4. NEVER claim approval happened if approve_wfh_request result is absent.\n"
+            "5. If no pending WFH requests, say team has no pending WFH requests."
+        )
+    elif intent == "show_penalties":
+        prompt = (
+            "You are an HRMS attendance penalty assistant.\n\n"
+            "RULES:\n"
+            "1. Show tool_results.attendance_penalties in a table: date, type (PL/LOP), days, status, payroll_locked.\n"
+            "2. If waive_attendance_penalty.waived == true: Confirm penalty waived.\n"
+            "3. If payroll_locked=true for a penalty: Warn that payroll for that month is already processed; "
+            "   reversal will be reflected in next cycle.\n"
+            "4. If no penalties: Say no active attendance penalties found.\n"
+            "5. HR can waive by saying 'Waive penalty #<ID> reason <reason>'. Managers can reverse."
+        )
     else:
         prompt = (
             "You are an HRMS assistant answering employee and HR questions using ONLY the provided tool_results and retrieved_docs.\n"

@@ -42,8 +42,8 @@ class ProcessLeaveApplicationTask(BaseHRMSTask):
             "input_data": {
                 "leave_id": leave.pk,
                 "leave_type": leave.leave_type,
-                "from_date": leave.from_date,
-                "to_date": leave.to_date,
+                "from_date": leave.from_date.isoformat() if leave.from_date else None,
+                "to_date": leave.to_date.isoformat() if leave.to_date else None,
                 "days_count": leave.days_count,
                 "is_half_day": leave.is_half_day,
                 "reason": leave.reason,
@@ -118,7 +118,7 @@ class ProcessLeaveApprovalTask(BaseHRMSTask):
     def execute(self, leave_id: int):
         from apps.leaves.models import LeaveRequest
 
-        leave = LeaveRequest.objects.select_related("employee__user").filter(pk=leave_id).first()
+        leave = LeaveRequest.objects.select_related("employee__user", "approver__user").filter(pk=leave_id).first()
         if not leave:
             logger.info("Leave not found leave_id=%s", leave_id)
             return {"status": "not_found"}
@@ -167,6 +167,11 @@ class ProcessLeaveApprovalTask(BaseHRMSTask):
                     "from_date": str(leave.from_date),
                     "to_date": str(leave.to_date),
                     "days_count": float(leave.days_count),
+                    "actioned_by_name": (
+                        leave.approver.user.name
+                        if leave.approver and hasattr(leave.approver, "user") and leave.approver.user
+                        else None
+                    ),
                 },
             )
         logger.info("Leave approval processed leave_id=%s", leave_id)

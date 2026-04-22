@@ -1,6 +1,7 @@
+import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "./LoginPage";
-import ChatPage from "./ChatPage";
+import AppShell from "./components/layout/AppShell";
 import { isLoggedIn } from "./auth";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -13,12 +14,17 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LoginPage />} />
         <Route
-          path="/chat"
+          path="/dashboard"
           element={
             <RequireAuth>
-              <ChatPage />
+              <AppShell />
             </RequireAuth>
           }
+        />
+        {/* Legacy /chat route still works */}
+        <Route
+          path="/chat"
+          element={<Navigate to="/dashboard" replace />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
