@@ -1,4 +1,5 @@
-const BASE = "http://localhost:8002/api";
+const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000") + "/api";
+export const WS_BASE: string = import.meta.env.VITE_WS_BASE ?? "ws://localhost:8001";
 
 export interface TokenPair {
   access: string;
@@ -12,9 +13,10 @@ export interface ChatResponse {
   collecting_index?: number;
   leave_items?: unknown[];
   policy_violations?: unknown[];
+  tool_results?: Record<string, any>;
 }
 
-// ── Auth ─────────────────────────────────────────────────────────────────────
+// \u2500\u2500 Auth \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 export async function login(email: string, password: string): Promise<TokenPair> {
   const res = await fetch(`${BASE}/auth/token/`, {
@@ -40,12 +42,13 @@ export async function refreshToken(refresh: string): Promise<string> {
   return data.access;
 }
 
-// ── Me ────────────────────────────────────────────────────────────────────────
+// \u2500\u2500 Me \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 export interface UserProfile {
   name: string;
   role: string;
   title: string;
+  employee_id?: number;
   department?: { name: string };
 }
 
@@ -59,11 +62,12 @@ export async function fetchMe(token: string): Promise<UserProfile | null> {
     name: data.user?.name || "",
     role: data.role || "",
     title: data.title || "",
+    employee_id: data.id,
     department: data.department,
   };
 }
 
-// ── Sessions ──────────────────────────────────────────────────────────────────
+// \u2500\u2500 Sessions \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 export interface SessionMeta {
   session_id: string;
@@ -99,7 +103,53 @@ export async function fetchSessionMessages(token: string, sessionId: string): Pr
   return data.messages as BackendMessage[];
 }
 
-// ── Chat ──────────────────────────────────────────────────────────────────────
+// \u2500\u2500 Notifications \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+export interface NotificationItem {
+  id: number;
+  subject: string;
+  body: string;
+  metadata: Record<string, unknown>;
+  read: boolean;
+  created_at: string;
+}
+
+export async function fetchUnreadNotifications(token: string): Promise<NotificationItem[]> {
+  const res = await fetch(`${BASE}/notifications/?unread=true&limit=20`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export interface RenotifyResult {
+  status: "re_pushed" | "new_reminder" | "limit_reached" | "cooldown" | "not_found" | "error";
+  manager_read?: boolean;
+  renotify_count?: number;
+  reminders_left?: number;
+  next_available_in_minutes?: number;
+  error?: string;
+}
+
+export async function renotifyLeave(token: string, leaveId: number): Promise<RenotifyResult> {
+  const res = await fetch(`${BASE}/notifications/renotify/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ leave_id: leaveId }),
+  });
+  if (res.status === 401) throw new Error("401 Unauthorized");
+  const data = await res.json();
+  if (!res.ok) {
+    return { status: "error", error: data.error || `Error ${res.status}` };
+  }
+  return data as RenotifyResult;
+}
+
+// \u2500\u2500 Chat \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 export async function sendMessage(
   token: string,
