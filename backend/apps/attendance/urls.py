@@ -2,6 +2,10 @@ from django.urls import path
 
 from .views import (
     AttendanceCheckInView,
+    AttendanceCheckOutView,
+    AttendanceTodayView,
+    AttendanceWeekView,
+    OrgInsightsView,
     AttendancePenaltyListView,
     AttendancePenaltyReverseView,
     AttendancePenaltyWaiveView,
@@ -19,7 +23,11 @@ from .views import (
 
 urlpatterns = [
     # Existing
-    path("check-in/", AttendanceCheckInView.as_view(), name="attendance-check-in"),
+    path("check-in/",  AttendanceCheckInView.as_view(),  name="attendance-check-in"),
+    path("check-out/", AttendanceCheckOutView.as_view(), name="attendance-check-out"),
+    path("today/",     AttendanceTodayView.as_view(),    name="attendance-today"),
+    path("week/",         AttendanceWeekView.as_view(),  name="attendance-week"),
+    path("org-insights/", OrgInsightsView.as_view(),    name="attendance-org-insights"),
 
     # Regularization
     path("regularization/", RegularizationListView.as_view(), name="regularization-list"),

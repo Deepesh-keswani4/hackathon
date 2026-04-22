@@ -87,6 +87,18 @@ class AttendanceService:
         logger.info("Attendance check-in employee_id=%s date=%s", self.employee.employee_id, date)
         return log
 
+    @transaction.atomic
+    def check_out(self, date) -> AttendanceLog:
+        existing = self.read_repo.get_by_employee_and_date(self.employee.id, date)
+        if not existing or not existing.check_in:
+            raise ValueError("Cannot check out without checking in first.")
+        if existing.check_out:
+            raise ValueError("Already checked out for today.")
+        now = datetime.now(tz=timezone.utc)
+        log = self.write_repo.update(existing, check_out=now)
+        logger.info("Attendance check-out employee_id=%s date=%s", self.employee.employee_id, date)
+        return log
+
 
 class AttendancePolicyService:
     def __init__(

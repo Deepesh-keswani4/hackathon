@@ -1,7 +1,9 @@
-import React, { useState } from "react";
-import GlassCard from "../ui/GlassCard";
+import { useState } from "react";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8002/api";
+
+const darkTeal = "#0D3D36";
+const teal = "#0D9488";
 
 interface Props {
   token: string;
@@ -10,12 +12,7 @@ interface Props {
 }
 
 export default function RegularizationForm({ token, onSuccess, onCancel }: Props) {
-  const [form, setForm] = useState({
-    date: "",
-    requested_check_in: "",
-    requested_check_out: "",
-    reason: "",
-  });
+  const [form, setForm] = useState({ date: "", requested_check_in: "", requested_check_out: "", reason: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -39,73 +36,86 @@ export default function RegularizationForm({ token, onSuccess, onCancel }: Props
     }
   }
 
+  const inputCls = "w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none transition-all";
+  const inputStyle = { background: "#F0FDFB", border: "1px solid #CCFBF1", color: darkTeal };
+
   return (
-    <GlassCard className="max-w-md w-full">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-bold text-gray-900">Regularization Request</h3>
-        <button onClick={onCancel} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
+    <div className="max-w-md w-full rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #D0EFE9", boxShadow: "0 16px 48px rgba(13,61,54,0.14)" }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4" style={{ background: "#EBF9F6", borderBottom: "1px solid #D0EFE9" }}>
+        <div>
+          <div className="font-bold text-sm" style={{ color: darkTeal }}>Regularization Request</div>
+          <div className="text-[11px] mt-0.5" style={{ color: "#6B9E9A" }}>Correct a missed or incorrect attendance entry</div>
+        </div>
+        <button onClick={onCancel} className="w-7 h-7 flex items-center justify-center rounded-full transition-colors hover:bg-white/60" style={{ color: "#6B9E9A" }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+        </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="p-5 space-y-4">
         <div>
-          <label className="text-xs font-semibold text-gray-600 block mb-1.5">Date</label>
+          <label className="text-[11px] font-semibold block mb-1.5" style={{ color: "#6B9E9A" }}>Date</label>
           <input
             type="date"
             required
             value={form.date}
             max={new Date().toISOString().split("T")[0]}
             onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-            className="w-full px-3 py-2.5 rounded-2xl bg-white/60 border border-gray-200 text-sm focus:outline-none focus:border-gray-400 transition-all"
+            className={inputCls}
+            style={inputStyle}
           />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-semibold text-gray-600 block mb-1.5">Check-In Time</label>
+            <label className="text-[11px] font-semibold block mb-1.5" style={{ color: "#6B9E9A" }}>Check-In Time</label>
             <input
               type="time"
               value={form.requested_check_in}
               onChange={e => setForm(f => ({ ...f, requested_check_in: e.target.value }))}
-              className="w-full px-3 py-2.5 rounded-2xl bg-white/60 border border-gray-200 text-sm focus:outline-none focus:border-gray-400 transition-all"
+              className={inputCls}
+              style={inputStyle}
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-gray-600 block mb-1.5">Check-Out Time</label>
+            <label className="text-[11px] font-semibold block mb-1.5" style={{ color: "#6B9E9A" }}>Check-Out Time <span style={{ color: teal }}>*</span></label>
             <input
               type="time"
               required
               value={form.requested_check_out}
               onChange={e => setForm(f => ({ ...f, requested_check_out: e.target.value }))}
-              className="w-full px-3 py-2.5 rounded-2xl bg-white/60 border border-gray-200 text-sm focus:outline-none focus:border-gray-400 transition-all"
+              className={inputCls}
+              style={inputStyle}
             />
           </div>
         </div>
 
         <div>
-          <label className="text-xs font-semibold text-gray-600 block mb-1.5">Reason</label>
+          <label className="text-[11px] font-semibold block mb-1.5" style={{ color: "#6B9E9A" }}>Reason <span style={{ color: teal }}>*</span></label>
           <textarea
             required
             rows={3}
             value={form.reason}
             onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
-            placeholder="Explain why regularization is needed..."
-            className="w-full px-3 py-2.5 rounded-2xl bg-white/60 border border-gray-200 text-sm resize-none focus:outline-none focus:border-gray-400 transition-all"
+            placeholder="Explain why regularization is needed (forgotten clock-out, system issue, etc.)"
+            className={`${inputCls} resize-none`}
+            style={inputStyle}
           />
         </div>
 
         {error && (
-          <div className="px-3 py-2 rounded-2xl bg-red-50 border border-red-100 text-sm text-red-600">{error}</div>
+          <div className="px-3 py-2.5 rounded-xl text-sm" style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626" }}>{error}</div>
         )}
 
-        <div className="flex gap-3">
-          <button type="button" onClick={onCancel} className="flex-1 py-2.5 rounded-full border border-gray-200 text-sm font-semibold text-gray-600 hover:border-gray-400 transition-all">
+        <div className="flex gap-3 pt-1">
+          <button type="button" onClick={onCancel} className="flex-1 py-2.5 rounded-full text-sm font-semibold transition-all" style={{ border: "1px solid #D0EFE9", color: "#6B9E9A", background: "transparent" }}>
             Cancel
           </button>
-          <button type="submit" disabled={loading} className="flex-1 py-2.5 rounded-full bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-all disabled:opacity-50">
-            {loading ? "Submitting..." : "Submit ↗"}
+          <button type="submit" disabled={loading} className="flex-1 py-2.5 rounded-full text-sm font-semibold text-white transition-all disabled:opacity-50" style={{ background: darkTeal }}>
+            {loading ? "Submitting..." : "Submit Request"}
           </button>
         </div>
       </form>
-    </GlassCard>
+    </div>
   );
 }

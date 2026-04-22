@@ -90,7 +90,7 @@ export default function AppShell() {
 
   if (page === "chat") {
     return (
-      <div className="flex flex-col h-screen" style={{ background: "#EEEADE" }}>
+      <div className="flex flex-col h-screen" style={{ background: "#E8F5F1" }}>
         <TopBar
           page={page}
           notifications={notifications}
@@ -108,7 +108,7 @@ export default function AppShell() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ background: "#EEEADE" }}>
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: "#E8F5F1" }}>
       <TopBar
         page={page}
         notifications={notifications}
