@@ -535,6 +535,15 @@ interface NewsArticle { title: string; url: string; pub: string; summary: string
 const TAG_LABELS: Record<string, string> = { "supply-chain": "Supply Chain", ai: "AI", technology: "Tech" };
 const TAGS = ["all", "supply-chain", "ai", "technology"];
 
+function sanitizeNewsText(raw: string): string {
+  return (raw ?? "")
+    .replace(/&lt;img[\s\S]*?&gt;/gi, "")
+    .replace(/<img[\s\S]*?>/gi, "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/<img[^>]*$/gi, "")
+    .trim();
+}
+
 function NewsFeedCard({ token }: { token: string }) {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [tag, setTag] = useState("all");
@@ -601,7 +610,7 @@ function NewsFeedCard({ token }: { token: string }) {
           <div className="divide-y" style={{ borderColor: "#F0FDFB" }}>
             {filtered.map((a, i) => (
               <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
-                className="flex items-start gap-2.5 px-4 py-3 group transition-colors hover:bg-[#F0FDFB] block no-underline"
+                className="flex items-start gap-2.5 px-4 py-3 group transition-colors hover:bg-[#F0FDFB] block no-underline overflow-hidden"
               >
                 <div className="w-1 h-1 rounded-full mt-1.5 flex-shrink-0" style={{ background: a.color }} />
                 <div className="flex-1 min-w-0">
@@ -614,8 +623,8 @@ function NewsFeedCard({ token }: { token: string }) {
                     {a.title}
                   </div>
                   {a.summary && (
-                    <div className="text-[10px] mt-0.5 line-clamp-2 leading-relaxed" style={{ color: C.textMuted }}>
-                      {a.summary.replace(/<[^>]*>/g, "")}
+                    <div className="text-[10px] mt-0.5 line-clamp-2 leading-relaxed break-words" style={{ color: C.textMuted }}>
+                      {sanitizeNewsText(a.summary)}
                     </div>
                   )}
                 </div>

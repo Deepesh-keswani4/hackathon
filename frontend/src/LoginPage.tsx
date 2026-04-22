@@ -34,7 +34,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: "#EDECEA" }}>
+    <div className="min-h-screen flex" style={{ background: "#EBF9F6" }}>
 
       {/* Left panel */}
       <div className="hidden lg:flex flex-col justify-between w-[55%] px-16 py-12">

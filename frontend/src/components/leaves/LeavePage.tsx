@@ -122,7 +122,7 @@ export default function LeavePage({ token, role }: LeavePageProps) {
   ];
 
   return (
-    <div className="h-full overflow-y-auto p-5" style={{ background: "#EDECEA" }}>
+    <div className="h-full overflow-y-auto p-5" style={{ background: "#EBF9F6" }}>
       {toast && (
         <div className="fixed top-5 right-5 z-50 px-4 py-3 bg-[#111111] text-white text-sm font-semibold rounded-2xl shadow-2xl">
           {toast}

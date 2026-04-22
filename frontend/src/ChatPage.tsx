@@ -820,7 +820,7 @@ export default function ChatPage({ embedded, onNav }: ChatPageProps = {}) {
   return (
     <div
       className={`flex overflow-hidden ${embedded ? "h-full" : "h-screen"}`}
-      style={{ background: "#EDECEA" }}
+      style={{ background: "#EBF9F6" }}
     >
       {/* no blobs — Crextio is clean flat */}
       <div className="hidden" />
@@ -907,13 +907,11 @@ export default function ChatPage({ embedded, onNav }: ChatPageProps = {}) {
       {/* ── Main ────────────────────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 relative z-10">
 
-        {/* Top bar */}
-        <header
-          className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
-          style={{ background: "#EDECEA", borderBottom: "1px solid rgba(0,0,0,0.06)" }}
-        >
-          {/* Sidebar toggle — hide when embedded (sidebar already = 0 width) */}
-          {!embedded && (
+        {!embedded && (
+          <header
+            className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
+            style={{ background: "#EBF9F6", borderBottom: "1px solid #D0EFE9" }}
+          >
             <button
               onClick={() => setSidebarOpen((v) => !v)}
               className="w-8 h-8 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] flex items-center justify-center text-gray-500 hover:text-gray-700 transition-all flex-shrink-0"
@@ -922,64 +920,58 @@ export default function ChatPage({ embedded, onNav }: ChatPageProps = {}) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-          )}
 
-          {/* Brand logo */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="w-7 h-7 rounded-xl bg-[#111111] flex items-center justify-center text-[#E8D44D] text-[10px] font-black">
-              ✦
-            </div>
-            <span className="text-sm font-bold tracking-tight text-[#111111]">AI Assistant</span>
-          </div>
-
-          <div className="flex-1" />
-
-          {/* Notification bell */}
-          <button
-            onClick={renotify}
-            className="relative flex-shrink-0 w-8 h-8 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] flex items-center justify-center text-gray-500 hover:text-gray-700 transition-all"
-            title="Show unread notifications"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            )}
-          </button>
-
-          {/* User avatar + time */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            {/* Live time */}
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-bold tabular-nums text-gray-900">{time}</p>
-              <p className="text-[10px] text-gray-400">
-                {new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-              </p>
-            </div>
-
-            {/* User initials circle */}
-            {userProfile ? (
-              <div className="relative group cursor-default">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-pink-400 to-orange-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                  {getInitials(userProfile.name)}
-                </div>
-                {/* Tooltip */}
-                <div className="absolute right-0 top-10 w-44 rounded-2xl p-3 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10 bg-white/90 backdrop-blur-xl border border-white/80 shadow-xl">
-                  <p className="text-xs font-bold text-gray-900 truncate">{userProfile.name}</p>
-                  <p className="text-[10px] truncate mt-0.5 text-gray-500">{userProfile.title || userProfile.role}</p>
-                  {userProfile.department && (
-                    <p className="text-[10px] truncate text-gray-400">{userProfile.department.name}</p>
-                  )}
-                </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="w-7 h-7 rounded-xl bg-[#111111] flex items-center justify-center text-[#E8D44D] text-[10px] font-black">
+                ✦
               </div>
-            ) : (
-              <div className="w-8 h-8 rounded-xl bg-gray-200 flex-shrink-0" />
-            )}
-          </div>
-        </header>
+              <span className="text-sm font-bold tracking-tight text-[#111111]">AI Assistant</span>
+            </div>
+
+            <div className="flex-1" />
+
+            <button
+              onClick={renotify}
+              className="relative flex-shrink-0 w-8 h-8 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] flex items-center justify-center text-gray-500 hover:text-gray-700 transition-all"
+              title="Show unread notifications"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
+            </button>
+
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="text-right hidden sm:block">
+                <p className="text-xs font-bold tabular-nums text-gray-900">{time}</p>
+                <p className="text-[10px] text-gray-400">
+                  {new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                </p>
+              </div>
+
+              {userProfile ? (
+                <div className="relative group cursor-default">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-pink-400 to-orange-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                    {getInitials(userProfile.name)}
+                  </div>
+                  <div className="absolute right-0 top-10 w-44 rounded-2xl p-3 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10 bg-white/90 backdrop-blur-xl border border-white/80 shadow-xl">
+                    <p className="text-xs font-bold text-gray-900 truncate">{userProfile.name}</p>
+                    <p className="text-[10px] truncate mt-0.5 text-gray-500">{userProfile.title || userProfile.role}</p>
+                    {userProfile.department && (
+                      <p className="text-[10px] truncate text-gray-400">{userProfile.department.name}</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="w-8 h-8 rounded-xl bg-gray-200 flex-shrink-0" />
+              )}
+            </div>
+          </header>
+        )}
 
         {/* Loading history */}
         {loadingHistory && (
@@ -1031,7 +1023,7 @@ export default function ChatPage({ embedded, onNav }: ChatPageProps = {}) {
                     <div className="prose prose-sm max-w-none text-gray-900">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                     </div>
-                    {msg.notifMetadata?.actioned_by_name && (
+                    {msg.notifMetadata && msg.notifMetadata.actioned_by_name ? (
                       <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
                         <span className="w-5 h-5 rounded-full bg-[#E8D44D] flex items-center justify-center text-[#111111] text-[9px] font-bold flex-shrink-0">
                           {String(msg.notifMetadata.actioned_by_name).slice(0, 1).toUpperCase()}
@@ -1042,7 +1034,7 @@ export default function ChatPage({ embedded, onNav }: ChatPageProps = {}) {
                             : "Rejected"} by <span className="font-semibold text-gray-700">{String(msg.notifMetadata.actioned_by_name)}</span>
                         </span>
                       </div>
-                    )}
+                    ) : null}
                     {msg.ctas && msg.ctas.length > 0 && (
                       <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
                         {msg.ctas.map((cta) => (
@@ -1133,7 +1125,7 @@ export default function ChatPage({ embedded, onNav }: ChatPageProps = {}) {
         </div>
 
         {/* Input bar */}
-        <div className="px-4 py-4 flex-shrink-0" style={{ background: "#EDECEA", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+        <div className="px-4 py-4 flex-shrink-0" style={{ background: "#EBF9F6", borderTop: "1px solid #D0EFE9" }}>
           <form
             onSubmit={(e) => { e.preventDefault(); submit(input); }}
             className="max-w-2xl mx-auto"
